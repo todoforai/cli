@@ -19,10 +19,10 @@ const GAP = " ";
 const WORD = "todo4ai";
 
 function renderHalfBlock(top: string, bot: string): string {
-  const W = "\x1b[97m"; // bright white fg
-  const G = "\x1b[90m"; // gray fg
-  const BW = "\x1b[107m"; // bright white bg
-  const BG = "\x1b[100m"; // gray bg
+  const W = "\x1b[38;2;249;110;46m"; // brand orange fg (#f96e2e)
+  const G = "\x1b[38;2;140;60;20m"; // dark orange fg (fade)
+  const BW = "\x1b[48;2;249;110;46m"; // brand orange bg
+  const BG = "\x1b[48;2;140;60;20m"; // dark orange bg (fade)
   const R = "\x1b[0m";
 
   if (top === " " && bot === " ") return " ";

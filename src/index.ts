@@ -295,8 +295,11 @@ async function main() {
   }
 
   if (preMatchedAgent) {
+    const paths = getAgentWorkspacePaths(preMatchedAgent);
+    const pathLabel = paths.length === 1 ? "Path" : "Paths";
+    const pathStr = paths.length === 1 ? paths[0] : JSON.stringify(paths);
     process.stderr.write(
-      `AgentSettings: ${getDisplayName(preMatchedAgent)} Paths: ${JSON.stringify(getAgentWorkspacePaths(preMatchedAgent))}\n`,
+      `\x1b[90mAgent:\x1b[0m \x1b[38;2;249;110;46m${getDisplayName(preMatchedAgent)}\x1b[0m \x1b[90m│ ${pathLabel}:\x1b[0m \x1b[36m${pathStr}\x1b[0m\n`,
     );
   }
 
@@ -357,7 +360,6 @@ async function main() {
   }
 
   // ── create todo ──
-  process.stderr.write("\nCreating TODO...\n");
   const todo = await api.addMessage(projectId, content, agent);
   const actualTodoId = todo.id || crypto.randomUUID();
   cfg.data.last_todo_id = actualTodoId;
@@ -368,7 +370,7 @@ async function main() {
   if (args.json) {
     console.log(JSON.stringify({ ...todo, frontend_url: frontendUrl }, null, 2));
   } else {
-    process.stderr.write(`TODO created: ${frontendUrl}\n`);
+    process.stderr.write(`\x1b[90mTODO:\x1b[0m \x1b[36m${frontendUrl}\x1b[0m\n`);
   }
 
   // ── watch ──

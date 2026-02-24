@@ -3,6 +3,14 @@
 import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
 import { singleChar } from "./select";
 
+// ANSI color codes
+const YELLOW = "\x1b[33m";
+const GREEN = "\x1b[32m";
+const RED = "\x1b[31m";
+const DIM = "\x1b[90m";
+const CYAN = "\x1b[36m";
+const RESET = "\x1b[0m";
+
 // ── block classification ─────────────────────────────────────────────
 
 function classifyBlock(info: any): string {
@@ -68,6 +76,7 @@ export async function watchTodo(
     "todo:msg_meta_ai", "todo:status", "todo:new_message_created",
     "block:end", "block:start_shell", "block:start_createfile",
     "block:start_modifyfile", "block:start_mcp", "block:start_catfile",
+    "block:sh_msg_start", "block:sh_done",
   ]);
 
   const signalActivity = () => opts.activityEvent?.set();
@@ -94,10 +103,10 @@ export async function watchTodo(
   process.on("SIGINT", () => {
     interruptCount++;
     if (interruptCount >= 2) {
-      process.stderr.write("\n\x1b[31mForce exit (double Ctrl+C)\x1b[0m\n");
+      process.stderr.write(`\n${RED}Force exit (double Ctrl+C)${RESET}\n`);
       process.exit(130);
     }
-    process.stderr.write("\n\x1b[33mInterrupting... (Ctrl+C again to force exit)\x1b[0m\n");
+    process.stderr.write(`\n${YELLOW}Interrupting... (Ctrl+C again to force exit)${RESET}\n`);
     if (opts.interruptOnCancel !== false) {
       ws.sendInterrupt(projectId, todoId);
     }
@@ -116,21 +125,21 @@ export async function watchTodo(
     if (approveAll) {
       for (const bi of blocks) {
         const [tl, disp] = blockDisplay(bi);
-        process.stderr.write(`\n\x1b[33m⚠ Auto-approving [${tl}]\x1b[0m ${disp}\n`);
+        process.stderr.write(`\n${YELLOW}⚠ Auto-approving [${tl}]${RESET} ${disp}\n`);
         sendApproval(ws, bi.blockId, bi.messageId, todoId);
       }
       approvalPromptActive = false;
       return;
     }
 
-    process.stderr.write(`\n\x1b[33m⚠ ${blocks.length} action(s) awaiting approval:\x1b[0m\n`);
+    process.stderr.write(`\n${YELLOW}⚠ ${blocks.length} action(s) awaiting approval:${RESET}\n`);
     for (const bi of blocks) {
       const [tl, disp] = blockDisplay(bi);
-      process.stderr.write(`  [${tl}] ${disp}\n`);
+      process.stderr.write(`  ${YELLOW}[${tl}]${RESET} ${disp}\n`);
       const ctx = bi.approvalContext || {};
       const installs = ctx.toolInstalls || [];
       if (installs.length) {
-        process.stderr.write(`  \x1b[36m↳ Install tools: ${installs.join(", ")}\x1b[0m\n`);
+        process.stderr.write(`  ${CYAN}↳ Install tools: ${installs.join(", ")}${RESET}\n`);
       }
     }
 
@@ -147,7 +156,7 @@ export async function watchTodo(
         for (const bi of blocks) {
           ws.sendBlockDeny(todoId, bi.messageId, bi.blockId);
         }
-        process.stderr.write("  \x1b[31m✗ Denied\x1b[0m\n");
+        process.stderr.write(`  ${RED}✗ Denied${RESET}\n`);
       }
     } catch {
       // Interrupted — auto-approve
@@ -167,7 +176,7 @@ export async function watchTodo(
       const status = updates.status;
       const result = updates.result;
       if (result) {
-        process.stderr.write(`\n--- Block Result ---\n${result}\n`);
+        process.stderr.write(`\n${DIM}--- Block Result ---\n${result}${RESET}\n`);
         signalActivity();
       } else if (status === "AWAITING_APPROVAL") {
         pendingBlocks.push(payload);
@@ -184,8 +193,17 @@ export async function watchTodo(
         .filter(([k]) => !skip.has(k))
         .map(([k, v]) => `${k}=${v}`);
       const extra = parts.length ? ` ${parts.join(" ")}` : "";
-      process.stderr.write(`\n\x1b[32m*\x1b[0m ${blockType}${extra}\n`);
+      process.stderr.write(`\n${YELLOW}*${RESET} ${YELLOW}${blockType}${RESET}${extra}\n`);
       signalActivity();
+    } else if (msgType === "block:sh_msg_result") {
+      const content = payload.content || "";
+      if (content) {
+        const lines = content.trim().split("\n");
+        const preview = lines.slice(0, 4).map((l: string) => `  ${DIM}│${RESET} ${l}`).join("\n");
+        const extra = lines.length > 4 ? `\n  ${DIM}│ +${lines.length - 4} lines${RESET}` : "";
+        process.stderr.write(`${preview}${extra}\n`);
+        signalActivity();
+      }
     } else if (!ignore.has(msgType)) {
       process.stderr.write(`\n[${msgType}]\n`);
       signalActivity();
@@ -206,7 +224,7 @@ export async function watchTodo(
       process.exit(1);
     }
     if (!opts.suppressCancelNotice) {
-      process.stderr.write("\x1b[33mInterrupted\x1b[0m\n");
+      process.stderr.write(`${YELLOW}Interrupted${RESET}\n`);
     }
     return false;
   } finally {
