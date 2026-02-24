@@ -1,0 +1,16 @@
+{
+  "name": "@todoforai/cli-bun",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "todoai": "src/index.ts"
+  },
+  "dependencies": {
+    "todoforai-edge": "file:../edge/bun",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.0"
+  }
+}
