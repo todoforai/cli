@@ -3,6 +3,10 @@
 import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
 import { singleChar } from "./select";
 import { getBlockPatterns } from "@shared/fbe/bashPatterns";
+import { renderDiff } from "./diff-view";
+
+type DiffEntry = { originalContent: string; modifiedContent: string };
+const diffStoreByWs = new WeakMap<FrontendWebSocket, Map<string, DiffEntry>>();
 
 // ANSI color codes
 const YELLOW = "\x1b[33m";
@@ -17,7 +21,7 @@ const RESET = "\x1b[0m";
 function classifyBlock(info: any): string {
   const inner = (info.block_type || "").toLowerCase();
   if (["create", "createfile"].includes(inner)) return "file";
-  if (["modify", "modifyfile", "update"].includes(inner)) return "file";
+  if (["modify", "modifyfile", "update", "edit"].includes(inner)) return "file";
   if (["catfile", "read", "readfile"].includes(inner)) return "read";
   if (inner === "mcp") return "mcp";
   if (["shell", "bash"].includes(inner) || info.cmd) return "shell";
@@ -28,7 +32,11 @@ function blockDisplay(info: any): [string, string] {
   const labels: Record<string, string> = { file: "File", read: "Read File", mcp: "MCP", shell: "Shell" };
   const kind = classifyBlock(info);
   const typeLabel = labels[kind] || info.block_type || "Tool";
-  const skipKeys = new Set(["userId", "messageId", "todoId", "blockId", "block_type", "edge_id", "timeout", "updates"]);
+  const skipKeys = new Set([
+    "userId", "messageId", "todoId", "blockId", "block_type", "edge_id", "timeout", "updates",
+    "changes", "originalContent", "modifiedContent", "approvalContext", "generalized_pattern",
+    "status", "toolCallId", "result",
+  ]);
   const knownKeys = new Set(["path", "filePath", "content", "cmd", "name"]);
 
   let display = info.path || info.filePath || info.content || info.cmd || info.name || "";
@@ -100,8 +108,11 @@ export async function watchTodo(
     }
   }
 
-  // Track block info from start events so we have type/cmd/generalized_pattern for approvals
-  const blockInfo = new Map<string, Record<string, any>>();
+  // Track block info from start events + BLOCK_UPDATE updates
+  const blocksStore = new Map<string, Record<string, any>>();
+  // Persist diffs across watchTodo instances for a given websocket connection
+  const diffStore = diffStoreByWs.get(ws) ?? new Map<string, DiffEntry>();
+  diffStoreByWs.set(ws, diffStore);
 
   let approveAll = !!opts.autoApprove;
   let interruptCount = 0;
@@ -124,12 +135,17 @@ export async function watchTodo(
   // Pending approval blocks
   const pendingBlocks: any[] = [];
   let approvalPromptActive = false;
+  // Blocks currently shown in approval prompt (for late-arriving diff rendering)
+  let activeApprovalBlocks: any[] = [];
 
   async function handleApprovals() {
     if (approvalPromptActive || pendingBlocks.length === 0) return;
     approvalPromptActive = true;
 
-    const blocks = pendingBlocks.splice(0);
+    const blocks = pendingBlocks.splice(0).map(bi => {
+      const latest = bi?.blockId ? (blocksStore.get(bi.blockId) || {}) : {};
+      return { ...latest, ...bi };
+    });
 
     if (approveAll) {
       for (const bi of blocks) {
@@ -138,9 +154,17 @@ export async function watchTodo(
         sendApproval(ws, bi.blockId, bi.messageId, todoId);
       }
       approvalPromptActive = false;
+      if (pendingBlocks.length > 0) {
+        void handleApprovals();
+      }
       return;
     }
 
+    // Register blocks now so late-arriving diffs can render during the wait
+    activeApprovalBlocks = blocks;
+    // Brief pause so preprocess_tool's async diff BLOCK_UPDATE can arrive before we render
+    const hasFileBlocks = blocks.some(bi => classifyBlock(bi) === "file");
+    if (hasFileBlocks) await new Promise(r => setTimeout(r, 1500));
     process.stderr.write(`\n${YELLOW}⚠ ${blocks.length} action(s) awaiting approval:${RESET}\n`);
     for (const bi of blocks) {
       const [tl, disp] = blockDisplay(bi);
@@ -149,6 +173,12 @@ export async function watchTodo(
       const installs = ctx.toolInstalls || [];
       if (installs.length) {
         process.stderr.write(`  ${CYAN}↳ Install tools: ${installs.join(", ")}${RESET}\n`);
+      }
+      // Show word-level diff if already available
+      const diff = diffStore.get(bi.blockId);
+      if (diff) {
+        const filePath = bi.path || bi.filePath || "file";
+        process.stderr.write(renderDiff(diff.originalContent, diff.modifiedContent, filePath));
       }
     }
 
@@ -194,7 +224,11 @@ export async function watchTodo(
         sendApproval(ws, bi.blockId, bi.messageId, todoId);
       }
     }
+    activeApprovalBlocks = [];
     approvalPromptActive = false;
+    if (pendingBlocks.length > 0) {
+      void handleApprovals();
+    }
   }
 
   const callback = (msgType: string, payload: any) => {
@@ -205,14 +239,33 @@ export async function watchTodo(
       const updates = payload.updates || {};
       const status = updates.status;
       const result = updates.result;
+      // Merge updates into blocksStore (includes originalContent/modifiedContent for diffs)
+      if (payload.blockId && Object.keys(updates).length) {
+        const stored = blocksStore.get(payload.blockId) || {};
+        blocksStore.set(payload.blockId, { ...stored, ...updates });
+      }
+      if (payload.blockId && (updates.originalContent !== undefined || updates.modifiedContent !== undefined)) {
+        diffStore.set(payload.blockId, {
+          originalContent: updates.originalContent ?? "",
+          modifiedContent: updates.modifiedContent ?? "",
+        });
+      }
+      // Render late-arriving diff while approval prompt is active
+      if (updates.originalContent !== undefined || updates.modifiedContent !== undefined) {
+        const bi = activeApprovalBlocks.find(b => b.blockId === payload.blockId);
+        if (bi) {
+          const filePath = bi.path || bi.filePath || updates.path || "file";
+          process.stderr.write(renderDiff(updates.originalContent || "", updates.modifiedContent || "", filePath));
+        }
+      }
       if (result) {
         process.stderr.write(`\n${DIM}--- Block Result ---\n${result}${RESET}\n`);
         signalActivity();
       } else if (status === "AWAITING_APPROVAL") {
         // Merge stored block start info so classifyBlock/blockDisplay/getBlockPatterns work
-        const stored = blockInfo.get(payload.blockId) || {};
-        pendingBlocks.push({ ...stored, ...payload });
-        handleApprovals();
+        const stored = blocksStore.get(payload.blockId) || {};
+        pendingBlocks.push({ ...stored, ...payload, ...updates });
+        void handleApprovals();
         signalActivity();
       } else if (status && status !== "COMPLETED" && status !== "RUNNING") {
         process.stderr.write(`\n[block:update] status=${status}\n`);
@@ -228,7 +281,7 @@ export async function watchTodo(
       process.stderr.write(`\n${YELLOW}*${RESET} ${YELLOW}${blockType}${RESET}${extra}\n`);
       // Store block info for later use in approval pattern computation
       if (payload.blockId) {
-        blockInfo.set(payload.blockId, payload);
+        blocksStore.set(payload.blockId, payload);
       }
       signalActivity();
     } else if (msgType === "block:sh_msg_result") {
@@ -243,7 +296,7 @@ export async function watchTodo(
     } else if (blockStartEvents.has(msgType)) {
       // Store block info from old-style start events for approval pattern computation
       if (payload.blockId) {
-        blockInfo.set(payload.blockId, payload);
+        blocksStore.set(payload.blockId, payload);
       }
     } else if (!ignore.has(msgType)) {
       process.stderr.write(`\n[${msgType}]\n`);
