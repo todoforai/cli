@@ -8,6 +8,7 @@ import { parseArgs } from "util";
 import { createInterface } from "readline";
 import { realpathSync } from "fs";
 import { resolve, basename } from "path";
+import { homedir } from "os";
 
 import { ApiClient } from "todoforai-edge/src/api";
 import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
@@ -94,6 +95,11 @@ function parseCliArgs() {
 
 // ── helpers ──────────────────────────────────────────────────────────
 
+function formatPathWithTilde(path: string): string {
+  const home = homedir();
+  return path.startsWith(home) ? path.replace(home, "~") : path;
+}
+
 function getAgentWorkspacePaths(agent: any): string[] {
   const paths: string[] = [];
   for (const ec of Object.values(agent.edgesMcpConfigs || {}) as any[]) {
@@ -115,6 +121,44 @@ function findAgentByPath(agents: any[], path: string): any | null {
   return null;
 }
 
+async function autoCreateAgent(api: ApiClient, resolvedPath: string, agents: any[]): Promise<any> {
+  const folderName = basename(resolvedPath) || "default";
+
+  // 1. Create agent
+  const resp = await api.createAgent();
+  const agentId = resp.id || resp.agentSettingsId;
+  if (!agentId) throw new Error(`Failed to create agent: ${JSON.stringify(resp)}`);
+  const agentSettingsId = resp.agentSettingsId || agentId;
+
+  // 2. Set name
+  await api.updateAgentSettings(agentId, agentSettingsId, { name: folderName });
+
+  // 3. Find edge ID from existing agents or fetch /edges
+  let edgeId: string | null = null;
+  for (const a of agents) {
+    const keys = Object.keys(a.edgesMcpConfigs || {});
+    if (keys.length) { edgeId = keys[0]; break; }
+  }
+  if (!edgeId) {
+    const edges = await api.listEdges();
+    if (Array.isArray(edges) && edges.length) edgeId = edges[0].id;
+  }
+  if (!edgeId) throw new Error("No edge available to configure workspace path");
+
+  // 4. Set workspace path
+  await api.setAgentEdgeMcpConfig(agentId, agentSettingsId, edgeId, "todoai_edge", { workspacePaths: [resolvedPath] });
+
+  // 5. Re-fetch full agent
+  const allAgents = await api.listAgentSettings();
+  const found = allAgents.find((a: any) => getItemId(a) === agentId);
+  if (found) return found;
+
+  // Fallback
+  resp.name = folderName;
+  resp.edgesMcpConfigs = { [edgeId]: { todoai_edge: { workspacePaths: [resolvedPath] } } };
+  return resp;
+}
+
 function getFrontendUrl(apiUrl: string, projectId: string, todoId: string): string {
   if (apiUrl.includes("localhost:4000") || apiUrl.includes("127.0.0.1:4000")) {
     return `http://localhost:3000/${projectId}/${todoId}`;
@@ -132,10 +176,76 @@ function readLine(prompt: string): Promise<string> {
   });
 }
 
+/** Raw-mode prompt with bracketed paste: multiline paste preserved, Enter submits. */
+function readMultiline(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const out = process.stderr;
+    let buf = "";
+    let pasting = false;
+    let done = false;
+
+    out.write(prompt);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    out.write("\x1b[?2004h"); // enable bracketed paste
+
+    function finish(cancelled: boolean) {
+      if (done) return;
+      done = true;
+      out.write("\x1b[?2004l"); // disable bracketed paste
+      out.write("\n");
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdin.removeListener("data", onData);
+      if (cancelled) reject(new Error("cancelled"));
+      else resolve(buf.trim());
+    }
+
+    function onData(data: Buffer) {
+      let s = data.toString("utf-8");
+      while (s.length > 0 && !done) {
+        if (pasting) {
+          const end = s.indexOf("\x1b[201~");
+          if (end >= 0) {
+            buf += s.slice(0, end);
+            out.write(s.slice(0, end));
+            pasting = false;
+            s = s.slice(end + 6);
+          } else {
+            buf += s; out.write(s); s = "";
+          }
+        } else {
+          const ps = s.indexOf("\x1b[200~");
+          const chunk = ps >= 0 ? s.slice(0, ps) : s;
+
+          for (let i = 0; i < chunk.length && !done; i++) {
+            const c = chunk.charCodeAt(i);
+            if (c === 0x03) { finish(true); return; }              // Ctrl+C
+            if (c === 0x0d || c === 0x0a) { finish(false); return; } // Enter
+            if (c === 0x7f || c === 0x08) {                         // Backspace
+              if (buf.length > 0) { buf = buf.slice(0, -1); out.write("\b \b"); }
+            } else if (c === 0x1b) {                                // skip escape seqs
+              while (i + 1 < chunk.length && !/[a-zA-Z~]/.test(chunk[i + 1])) i++;
+              i++;
+            } else if (c >= 0x20) {
+              buf += chunk[i]; out.write(chunk[i]);
+            }
+          }
+
+          if (ps >= 0) { pasting = true; s = s.slice(ps + 6); }
+          else s = "";
+        }
+      }
+    }
+
+    process.stdin.on("data", onData);
+  });
+}
+
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
     try {
-      const content = await readLine("TODO> ");
+      const content = await readMultiline("TODO> ");
       if (!content) { process.stderr.write("Error: Empty input\n"); process.exit(1); }
       return content;
     } catch {
@@ -164,7 +274,7 @@ async function interactiveLoop(
 ) {
   while (true) {
     try {
-      const input = await readLine("TODO> ");
+      const input = await readMultiline("TODO> ");
       if (!input) continue;
       if (["/exit", "/quit", "/q", "q", "exit"].includes(input)) break;
       if (["/help", "?"].includes(input)) {
@@ -291,13 +401,25 @@ async function main() {
     if (found) {
       preMatchedAgent = found;
       cfg.setDefaultAgent(getDisplayName(found), found);
+    } else {
+      const resolved = realpathSync(resolve(args.path as string));
+      process.stderr.write(`No agent found for '${resolved}', creating one...\n`);
+      try {
+        preMatchedAgent = await autoCreateAgent(api, resolved, agents);
+        cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
+      } catch (e: any) {
+        process.stderr.write(`Error: Failed to auto-create agent: ${e.message}\n`);
+        process.exit(1);
+      }
     }
   }
 
   if (preMatchedAgent) {
     const paths = getAgentWorkspacePaths(preMatchedAgent);
     const pathLabel = paths.length === 1 ? "Path" : "Paths";
-    const pathStr = paths.length === 1 ? paths[0] : JSON.stringify(paths);
+    const pathStr = paths.length === 1 
+      ? formatPathWithTilde(paths[0]) 
+      : JSON.stringify(paths.map(formatPathWithTilde));
     process.stderr.write(
       `\x1b[90mAgent:\x1b[0m \x1b[38;2;249;110;46m${getDisplayName(preMatchedAgent)}\x1b[0m \x1b[90m│ ${pathLabel}:\x1b[0m \x1b[36m${pathStr}\x1b[0m\n`,
     );
