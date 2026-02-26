@@ -2,6 +2,7 @@
 
 import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
 import { singleChar } from "./select";
+import { getBlockPatterns } from "@shared/fbe/bashPatterns";
 
 // ANSI color codes
 const YELLOW = "\x1b[33m";
@@ -46,10 +47,14 @@ function blockDisplay(info: any): [string, string] {
 
 // ── approval helpers ─────────────────────────────────────────────────
 
-function sendApproval(ws: FrontendWebSocket, blockId: string, messageId: string, todoId: string): void {
+function sendApproval(ws: FrontendWebSocket, blockId: string, messageId: string, todoId: string, decision: string = "allow_once", patterns?: string[]): void {
+  const payload: any = { todoId, messageId, blockId, decision };
+  if (patterns && patterns.length > 0) {
+    payload.patterns = patterns;
+  }
   (ws as any).ws?.send(JSON.stringify({
     type: "BLOCK_APPROVAL_INTENT",
-    payload: { todoId, messageId, blockId, decision: "allow_once" },
+    payload,
   }));
 }
 
@@ -144,13 +149,27 @@ export async function watchTodo(
     }
 
     try {
-      const response = await singleChar("  [Y]es / [n]o / [a]ll? ");
+      const response = await singleChar("  [Y]es / [n]o / [a]ll / [r]emember? ");
       if (response === "a") {
         approveAll = true;
       }
-      if (response === "a" || response === "y" || response === "") {
+      if (response === "a" || response === "y" || response === "" || response === "r") {
+        const decision = response === "r" ? "allow_remember" : "allow_once";
         for (const bi of blocks) {
-          sendApproval(ws, bi.blockId, bi.messageId, todoId);
+          let patterns: string[] | undefined;
+          if (response === "r") {
+            // Compute patterns from block payload
+            const bp = bi.payload || {};
+            patterns = getBlockPatterns({
+              type: bi.type || bp.block_type || "unknown",
+              generalized_pattern: bi.generalized_pattern,
+              cmd: bp.cmd,
+            });
+            if (patterns.length > 0) {
+              process.stderr.write(`  ${GREEN}✓ Remembering: ${patterns.join(", ")}${RESET}\n`);
+            }
+          }
+          sendApproval(ws, bi.blockId, bi.messageId, todoId, decision, patterns);
         }
       } else {
         for (const bi of blocks) {

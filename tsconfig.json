@@ -4,6 +4,10 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "types": ["bun-types"],
+    "paths": {
+      "@shared/fbe": ["../frontend/src/shared/fbe/index.ts"],
+      "@shared/fbe/*": ["../frontend/src/shared/fbe/*"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
