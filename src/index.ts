@@ -181,6 +181,7 @@ function readMultiline(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const out = process.stderr;
     let buf = "";
+    let cursor = 0; // cursor position within buf
     let pasting = false;
     let done = false;
 
@@ -188,6 +189,15 @@ function readMultiline(prompt: string): Promise<string> {
     process.stdin.setRawMode(true);
     process.stdin.resume();
     out.write("\x1b[?2004h"); // enable bracketed paste
+
+    /** Rewrite the line from cursor to end (used after insert/delete in middle) */
+    function refreshFromCursor() {
+      const tail = buf.slice(cursor);
+      out.write(tail + " "); // overwrite + clear last char
+      // move back to cursor position
+      const back = tail.length + 1;
+      if (back > 0) out.write(`\x1b[${back}D`);
+    }
 
     function finish(cancelled: boolean) {
       if (done) return;
@@ -201,18 +211,123 @@ function readMultiline(prompt: string): Promise<string> {
       else resolve(buf.trim());
     }
 
+    /** Find next word boundary to the right */
+    function wordRight(): number {
+      let p = cursor;
+      while (p < buf.length && buf[p] === " ") p++;
+      while (p < buf.length && buf[p] !== " ") p++;
+      return p;
+    }
+    /** Find next word boundary to the left */
+    function wordLeft(): number {
+      let p = cursor;
+      while (p > 0 && buf[p - 1] === " ") p--;
+      while (p > 0 && buf[p - 1] !== " ") p--;
+      return p;
+    }
+    function moveCursor(to: number) {
+      if (to === cursor) return;
+      if (to < cursor) out.write(`\x1b[${cursor - to}D`);
+      else out.write(`\x1b[${to - cursor}C`);
+      cursor = to;
+    }
+    /** Kill from cursor to end of line */
+    function killToEnd() {
+      if (cursor < buf.length) {
+        const erased = buf.length - cursor;
+        buf = buf.slice(0, cursor);
+        out.write(" ".repeat(erased));
+        out.write(`\x1b[${erased}D`);
+      }
+    }
+    /** Delete word backward (Ctrl+W) */
+    function deleteWordBack() {
+      const to = wordLeft();
+      if (to === cursor) return;
+      const removed = cursor - to;
+      buf = buf.slice(0, to) + buf.slice(cursor);
+      cursor = to;
+      out.write(`\x1b[${removed}D`);
+      refreshFromCursor();
+    }
+
+    /**
+     * Parse a CSI sequence starting at chunk[i] where chunk[i] === '\x1b'.
+     * Returns the new index i (after consuming the sequence).
+     * CSI = ESC [ (params) (letter)  e.g. \x1b[1;5D
+     */
+    function handleCSI(chunk: string, start: number): number {
+      let i = start + 1; // skip ESC
+      if (i >= chunk.length || chunk[i] !== "[") {
+        // Not CSI - skip ESC + one char
+        if (i < chunk.length) i++;
+        return i;
+      }
+      i++; // skip '['
+
+      // Collect parameter bytes (digits, semicolons)
+      let params = "";
+      while (i < chunk.length && /[0-9;]/.test(chunk[i])) {
+        params += chunk[i];
+        i++;
+      }
+      // Final byte (letter or ~)
+      const final = i < chunk.length ? chunk[i] : "";
+      i++; // skip final byte
+
+      // Parse modifier: "1;5" means modifier=5 (Ctrl), etc.
+      const parts = params.split(";");
+      const modifier = parts.length > 1 ? parseInt(parts[1]) : 0;
+      const code = parts[0] || "";
+      const ctrl = modifier === 5;
+
+      switch (final) {
+        case "D": // Left
+          if (ctrl) moveCursor(wordLeft());
+          else if (cursor > 0) { cursor--; out.write("\x1b[D"); }
+          break;
+        case "C": // Right
+          if (ctrl) moveCursor(wordRight());
+          else if (cursor < buf.length) { cursor++; out.write("\x1b[C"); }
+          break;
+        case "H": // Home
+          moveCursor(0);
+          break;
+        case "F": // End
+          moveCursor(buf.length);
+          break;
+        case "~":
+          if (code === "3") { // Delete
+            if (cursor < buf.length) {
+              buf = buf.slice(0, cursor) + buf.slice(cursor + 1);
+              refreshFromCursor();
+            }
+          }
+          // else: ignore other ~ sequences (PgUp, PgDn, etc.)
+          break;
+        // ignore everything else
+      }
+      return i;
+    }
+
     function onData(data: Buffer) {
       let s = data.toString("utf-8");
       while (s.length > 0 && !done) {
         if (pasting) {
           const end = s.indexOf("\x1b[201~");
           if (end >= 0) {
-            buf += s.slice(0, end);
-            out.write(s.slice(0, end));
+            const text = s.slice(0, end);
+            buf = buf.slice(0, cursor) + text + buf.slice(cursor);
+            out.write(text);
+            cursor += text.length;
+            if (cursor < buf.length) refreshFromCursor();
             pasting = false;
             s = s.slice(end + 6);
           } else {
-            buf += s; out.write(s); s = "";
+            buf = buf.slice(0, cursor) + s + buf.slice(cursor);
+            out.write(s);
+            cursor += s.length;
+            s = "";
           }
         } else {
           const ps = s.indexOf("\x1b[200~");
@@ -222,13 +337,30 @@ function readMultiline(prompt: string): Promise<string> {
             const c = chunk.charCodeAt(i);
             if (c === 0x03) { finish(true); return; }              // Ctrl+C
             if (c === 0x0d || c === 0x0a) { finish(false); return; } // Enter
-            if (c === 0x7f || c === 0x08) {                         // Backspace
-              if (buf.length > 0) { buf = buf.slice(0, -1); out.write("\b \b"); }
-            } else if (c === 0x1b) {                                // skip escape seqs
-              while (i + 1 < chunk.length && !/[a-zA-Z~]/.test(chunk[i + 1])) i++;
-              i++;
+            if (c === 0x17) { deleteWordBack(); }                   // Ctrl+W
+            else if (c === 0x0b) { killToEnd(); }                   // Ctrl+K
+            else if (c === 0x7f || c === 0x08) {                    // Backspace
+              if (cursor > 0) {
+                buf = buf.slice(0, cursor - 1) + buf.slice(cursor);
+                cursor--;
+                out.write("\b");
+                refreshFromCursor();
+              }
+            } else if (c === 0x1b) {                                // ESC sequence
+              i = handleCSI(chunk, i) - 1; // -1 because for loop does i++
+            } else if (c === 0x01) {                                // Ctrl+A (Home)
+              moveCursor(0);
+            } else if (c === 0x05) {                                // Ctrl+E (End)
+              moveCursor(buf.length);
             } else if (c >= 0x20) {
-              buf += chunk[i]; out.write(chunk[i]);
+              buf = buf.slice(0, cursor) + chunk[i] + buf.slice(cursor);
+              cursor++;
+              if (cursor < buf.length) {
+                out.write(chunk[i]);
+                refreshFromCursor();
+              } else {
+                out.write(chunk[i]);
+              }
             }
           }
 
