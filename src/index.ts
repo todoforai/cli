@@ -49,7 +49,6 @@ Options:
   --continue, -c           Continue most recent todo
   --print, -p              Non-interactive: run single message and exit
   --no-watch               Create todo and exit
-  --timeout <sec>          Watch timeout (default: 300)
   --json                   Output as JSON
   --safe                   Validate API key upfront
   --debug, -d              Debug output
@@ -75,7 +74,6 @@ function parseCliArgs() {
       continue: { type: "boolean", short: "c", default: false },
       print: { type: "boolean", short: "p", default: false },
       "no-watch": { type: "boolean", default: false },
-      timeout: { type: "string", default: "300" },
       json: { type: "boolean", default: false },
       safe: { type: "boolean", default: false },
       debug: { type: "boolean", short: "d", default: false },
@@ -405,7 +403,6 @@ async function interactiveLoop(
   todoId: string,
   projectId: string,
   agent: any,
-  timeout: number,
   json: boolean,
   autoApprove: boolean,
 ) {
@@ -441,7 +438,7 @@ async function interactiveLoop(
         cancelInput();
         inputPromise.catch(() => {}); // swallow cancel rejection
         process.stderr.write("\r\x1b[K"); // clear prompt line
-        await watchTodo(ws, todoId, projectId, timeout, {
+        await watchTodo(ws, todoId, projectId, {
           json, autoApprove, agentSettings: agent,
           replayMessages: buffered,
         });
@@ -459,7 +456,7 @@ async function interactiveLoop(
       }
       process.stderr.write("─".repeat(40) + "\n");
       await api.addMessage(projectId, input, agent, todoId);
-      await watchTodo(ws, todoId, projectId, timeout, {
+      await watchTodo(ws, todoId, projectId, {
         json, autoApprove, agentSettings: agent,
       });
     } catch {
@@ -551,8 +548,7 @@ async function main() {
     const ws = new FrontendWebSocket(apiUrl, apiKey);
     await ws.connect();
 
-    const timeout = parseInt(args.timeout as string) || 300;
-    await interactiveLoop(ws, api, todoId, projectId, agent, timeout, !!args.json, false);
+    await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, false);
     await ws.close();
     return;
   }
@@ -672,13 +668,11 @@ async function main() {
   }
 
   // ── watch ──
-  const timeout = parseInt(args.timeout as string) || 300;
-
   if (!args["no-watch"]) {
     const ws = new FrontendWebSocket(apiUrl, apiKey);
     await ws.connect();
 
-    await watchTodo(ws, actualTodoId, projectId, timeout, {
+    await watchTodo(ws, actualTodoId, projectId, {
       json: !!args.json,
       autoApprove: false,
       agentSettings: agent,
@@ -687,7 +681,7 @@ async function main() {
     // ── interactive follow-up ──
     if (!args.print) {
       process.stderr.write(`\n${"─".repeat(40)}\n`);
-      await interactiveLoop(ws, api, actualTodoId, projectId, agent, timeout, !!args.json, false);
+      await interactiveLoop(ws, api, actualTodoId, projectId, agent, !!args.json, false);
     }
 
     await ws.close();

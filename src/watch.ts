@@ -15,27 +15,24 @@ const RESET = "\x1b[0m";
 // ── block classification ─────────────────────────────────────────────
 
 function classifyBlock(info: any): string {
-  const btype: string = info.type || "";
-  const bp = info.payload || {};
-  const inner = (bp.block_type || "").toLowerCase();
-  if (btype.includes("createfile") || ["create", "createfile"].includes(inner)) return "file";
-  if (btype.includes("modifyfile") || ["modify", "modifyfile", "update"].includes(inner)) return "file";
-  if (btype.includes("catfile") || ["catfile", "read", "readfile"].includes(inner)) return "read";
-  if (btype.includes("mcp") || inner === "mcp") return "mcp";
-  if (btype.includes("shell") || ["shell", "bash"].includes(inner) || bp.cmd) return "shell";
+  const inner = (info.block_type || "").toLowerCase();
+  if (["create", "createfile"].includes(inner)) return "file";
+  if (["modify", "modifyfile", "update"].includes(inner)) return "file";
+  if (["catfile", "read", "readfile"].includes(inner)) return "read";
+  if (inner === "mcp") return "mcp";
+  if (["shell", "bash"].includes(inner) || info.cmd) return "shell";
   return "unknown";
 }
 
 function blockDisplay(info: any): [string, string] {
   const labels: Record<string, string> = { file: "File", read: "Read File", mcp: "MCP", shell: "Shell" };
-  const bp = info.payload || {};
   const kind = classifyBlock(info);
-  const typeLabel = labels[kind] || bp.block_type || "Tool";
-  const skipKeys = new Set(["userId", "messageId", "todoId", "blockId", "block_type", "edge_id", "timeout"]);
+  const typeLabel = labels[kind] || info.block_type || "Tool";
+  const skipKeys = new Set(["userId", "messageId", "todoId", "blockId", "block_type", "edge_id", "timeout", "updates"]);
   const knownKeys = new Set(["path", "filePath", "content", "cmd", "name"]);
 
-  let display = bp.path || bp.filePath || bp.content || bp.cmd || bp.name || "";
-  const rest = Object.entries(bp).filter(([k, v]) => !skipKeys.has(k) && !knownKeys.has(k) && v);
+  let display = info.path || info.filePath || info.content || info.cmd || info.name || "";
+  const rest = Object.entries(info).filter(([k, v]) => !skipKeys.has(k) && !knownKeys.has(k) && v);
   if (rest.length) {
     const extra = rest.map(([k, v]) => `${k}=${v}`).join(" ");
     display = display ? `${display} (${extra})` : extra;
@@ -75,15 +72,17 @@ export async function watchTodo(
   ws: FrontendWebSocket,
   todoId: string,
   projectId: string,
-  timeout: number,
   opts: WatchOpts = {},
 ): Promise<boolean> {
   const ignore = new Set([
     "todo:msg_start", "todo:msg_done", "todo:msg_stop_sequence",
     "todo:msg_meta_ai", "todo:status", "todo:new_message_created",
-    "block:end", "block:start_shell", "block:start_createfile",
+    "block:end", "block:sh_msg_start", "block:sh_done",
+  ]);
+  // Old-style block start events — store info but don't display
+  const blockStartEvents = new Set([
+    "block:start_shell", "block:start_createfile",
     "block:start_modifyfile", "block:start_mcp", "block:start_catfile",
-    "block:sh_msg_start", "block:sh_done",
   ]);
 
   const signalActivity = () => opts.activityEvent?.set();
@@ -100,6 +99,9 @@ export async function watchTodo(
       rootPath = (tc.workspacePaths || [])[0] || "";
     }
   }
+
+  // Track block info from start events so we have type/cmd/generalized_pattern for approvals
+  const blockInfo = new Map<string, Record<string, any>>();
 
   let approveAll = !!opts.autoApprove;
   let interruptCount = 0;
@@ -150,8 +152,16 @@ export async function watchTodo(
       }
     }
 
+    // Pre-compute patterns for the remember hint
+    const allPatterns = blocks.flatMap(bi => getBlockPatterns({
+      type: bi.block_type || "unknown",
+      generalized_pattern: bi.generalized_pattern,
+      cmd: bi.cmd,
+    }));
+    const patternHint = allPatterns.length ? ` ${DIM}${allPatterns.join(", ")}${RESET}` : "";
+
     try {
-      const response = await singleChar("  [Y]es / [n]o / [a]ll / [r]emember? ");
+      const response = await singleChar(`  [Y]es / [n]o / [a]ll / [r]emember${patternHint}? `);
       if (response === "a") {
         approveAll = true;
       }
@@ -160,12 +170,11 @@ export async function watchTodo(
         for (const bi of blocks) {
           let patterns: string[] | undefined;
           if (response === "r") {
-            // Compute patterns from block payload
-            const bp = bi.payload || {};
+            // Compute patterns from merged block info (block:start_universal + BLOCK_UPDATE)
             patterns = getBlockPatterns({
-              type: bi.type || bp.block_type || "unknown",
+              type: bi.block_type || "unknown",
               generalized_pattern: bi.generalized_pattern,
-              cmd: bp.cmd,
+              cmd: bi.cmd,
             });
             if (patterns.length > 0) {
               process.stderr.write(`  ${GREEN}✓ Remembering: ${patterns.join(", ")}${RESET}\n`);
@@ -200,7 +209,9 @@ export async function watchTodo(
         process.stderr.write(`\n${DIM}--- Block Result ---\n${result}${RESET}\n`);
         signalActivity();
       } else if (status === "AWAITING_APPROVAL") {
-        pendingBlocks.push(payload);
+        // Merge stored block start info so classifyBlock/blockDisplay/getBlockPatterns work
+        const stored = blockInfo.get(payload.blockId) || {};
+        pendingBlocks.push({ ...stored, ...payload });
         handleApprovals();
         signalActivity();
       } else if (status && status !== "COMPLETED" && status !== "RUNNING") {
@@ -215,6 +226,10 @@ export async function watchTodo(
         .map(([k, v]) => `${k}=${v}`);
       const extra = parts.length ? ` ${parts.join(" ")}` : "";
       process.stderr.write(`\n${YELLOW}*${RESET} ${YELLOW}${blockType}${RESET}${extra}\n`);
+      // Store block info for later use in approval pattern computation
+      if (payload.blockId) {
+        blockInfo.set(payload.blockId, payload);
+      }
       signalActivity();
     } else if (msgType === "block:sh_msg_result") {
       const content = payload.content || "";
@@ -224,6 +239,11 @@ export async function watchTodo(
         const extra = lines.length > 4 ? `\n  ${DIM}│ +${lines.length - 4} lines${RESET}` : "";
         process.stderr.write(`${preview}${extra}\n`);
         signalActivity();
+      }
+    } else if (blockStartEvents.has(msgType)) {
+      // Store block info from old-style start events for approval pattern computation
+      if (payload.blockId) {
+        blockInfo.set(payload.blockId, payload);
       }
     } else if (!ignore.has(msgType)) {
       process.stderr.write(`\n[${msgType}]\n`);
@@ -239,7 +259,7 @@ export async function watchTodo(
   }
 
   try {
-    const result = await ws.waitForCompletion(todoId, callback, timeout);
+    const result = await ws.waitForCompletion(todoId, callback);
     process.stdout.write("\n");
     if (!result?.success) {
       const t = result?.type || "unknown";
@@ -247,10 +267,6 @@ export async function watchTodo(
     }
     return true;
   } catch (e: any) {
-    if (e.message?.includes("Timeout")) {
-      process.stderr.write(`\nTimeout after ${timeout}s\n`);
-      process.exit(1);
-    }
     if (!opts.suppressCancelNotice) {
       process.stderr.write(`${YELLOW}Interrupted${RESET}\n`);
     }
