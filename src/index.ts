@@ -309,13 +309,13 @@ async function main() {
 
   // ── config commands ──
   if (args["show-config"]) {
-    console.log(`Config file: ${cfg.path}`);
+    console.log(`Config file: ${formatPathWithTilde(cfg.path)}`);
     console.log(JSON.stringify(cfg.data, null, 2));
     return;
   }
   if (args["reset-config"]) {
     const { existsSync, unlinkSync } = await import("fs");
-    if (existsSync(cfg.path)) { unlinkSync(cfg.path); console.log(`Configuration reset: ${cfg.path}`); }
+    if (existsSync(cfg.path)) { unlinkSync(cfg.path); console.log(`Configuration reset: ${formatPathWithTilde(cfg.path)}`); }
     else console.log("No configuration file to reset");
     return;
   }
@@ -403,7 +403,7 @@ async function main() {
       cfg.setDefaultAgent(getDisplayName(found), found);
     } else {
       const resolved = realpathSync(resolve(args.path as string));
-      process.stderr.write(`No agent found for '${resolved}', creating one...\n`);
+      process.stderr.write(`No agent found for '${formatPathWithTilde(resolved)}', creating one...\n`);
       try {
         preMatchedAgent = await autoCreateAgent(api, resolved, agents);
         cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
