@@ -67,6 +67,8 @@ export interface WatchOpts {
   interruptOnCancel?: boolean;
   suppressCancelNotice?: boolean;
   activityEvent?: { set(): void };
+  /** Messages buffered during callback handoff to replay before watching. */
+  replayMessages?: Array<[string, any]>;
 }
 
 export async function watchTodo(
@@ -228,6 +230,13 @@ export async function watchTodo(
       signalActivity();
     }
   };
+
+  // Replay any messages buffered during callback handoff
+  if (opts.replayMessages) {
+    for (const [msgType, payload] of opts.replayMessages) {
+      callback(msgType, payload);
+    }
+  }
 
   try {
     const result = await ws.waitForCompletion(todoId, callback, timeout);

@@ -176,9 +176,11 @@ function readLine(prompt: string): Promise<string> {
   });
 }
 
-/** Raw-mode prompt with bracketed paste: multiline paste preserved, Enter submits. */
-function readMultiline(prompt: string): Promise<string> {
-  return new Promise((resolve, reject) => {
+/** Raw-mode prompt with bracketed paste: multiline paste preserved, Enter submits.
+ *  Returns { promise, cancel } — call cancel() to abort the prompt externally. */
+function readMultiline(prompt: string): { promise: Promise<string>; cancel: () => void } {
+  let cancelFn: () => void = () => {};
+  const promise = new Promise<string>((resolve, reject) => {
     const out = process.stderr;
     let buf = "";
     let cursor = 0; // cursor position within buf
@@ -371,13 +373,16 @@ function readMultiline(prompt: string): Promise<string> {
     }
 
     process.stdin.on("data", onData);
+
+    cancelFn = () => finish(true);
   });
+  return { promise, cancel: () => cancelFn() };
 }
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
     try {
-      const content = await readMultiline("TODO> ");
+      const content = await readMultiline("TODO> ").promise;
       if (!content) { process.stderr.write("Error: Empty input\n"); process.exit(1); }
       return content;
     } catch {
@@ -404,9 +409,48 @@ async function interactiveLoop(
   json: boolean,
   autoApprove: boolean,
 ) {
+  // We're already subscribed to this todoId from the initial watchTodo call.
+  // Register a lightweight callback to detect server activity during prompt.
   while (true) {
     try {
-      const input = await readMultiline("TODO> ");
+      let activityResolve: (() => void) | null = null;
+      const activityPromise = new Promise<void>((res) => { activityResolve = res; });
+
+      // Lightweight callback — detect activity and buffer messages so none
+      // are lost in the handoff to the full watchTodo callback.
+      const ignoreActivity = new Set([
+        "todo:msg_start", "todo:msg_done", "todo:msg_stop_sequence",
+        "todo:msg_meta_ai", "todo:status", "todo:new_message_created",
+        "block:end", "block:sh_msg_start", "block:sh_done",
+      ]);
+      const buffered: Array<[string, any]> = [];
+      ws.setCallback(todoId, (msgType: string, payload: any) => {
+        buffered.push([msgType, payload]);
+        if (!ignoreActivity.has(msgType)) activityResolve?.();
+      });
+
+      const { promise: inputPromise, cancel: cancelInput } = readMultiline("TODO> ");
+
+      const winner = await Promise.race([
+        inputPromise.then((v) => ({ tag: "input" as const, value: v })),
+        activityPromise.then(() => ({ tag: "activity" as const, value: "" })),
+      ]);
+
+      if (winner.tag === "activity") {
+        // Server sent output — cancel prompt, hand buffered messages to watchTodo
+        cancelInput();
+        inputPromise.catch(() => {}); // swallow cancel rejection
+        process.stderr.write("\r\x1b[K"); // clear prompt line
+        await watchTodo(ws, todoId, projectId, timeout, {
+          json, autoApprove, agentSettings: agent,
+          replayMessages: buffered,
+        });
+        continue;
+      }
+      // User input won — remove lightweight callback
+      ws.setCallback(todoId);
+
+      const input = winner.value;
       if (!input) continue;
       if (["/exit", "/quit", "/q", "q", "exit"].includes(input)) break;
       if (["/help", "?"].includes(input)) {
