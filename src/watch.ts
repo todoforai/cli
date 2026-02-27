@@ -4,17 +4,10 @@ import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
 import { singleChar } from "./select";
 import { getBlockPatterns } from "@shared/fbe/bashPatterns";
 import { renderDiff } from "./diff-view";
+import { YELLOW, GREEN, RED, DIM, CYAN, RESET } from "./colors";
 
 type DiffEntry = { originalContent: string; modifiedContent: string };
 const diffStoreByWs = new WeakMap<FrontendWebSocket, Map<string, DiffEntry>>();
-
-// ANSI color codes
-const YELLOW = "\x1b[33m";
-const GREEN = "\x1b[32m";
-const RED = "\x1b[31m";
-const DIM = "\x1b[90m";
-const CYAN = "\x1b[36m";
-const RESET = "\x1b[0m";
 
 // ── block classification ─────────────────────────────────────────────
 
