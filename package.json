@@ -1,5 +1,5 @@
 {
-  "name": "@todoforai/cli-bun",
+  "name": "@todoforai/cli",
   "version": "0.1.0",
   "type": "module",
   "bin": {

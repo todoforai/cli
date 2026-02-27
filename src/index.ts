@@ -184,24 +184,76 @@ function readMultiline(prompt: string): { promise: Promise<string>; cancel: () =
     let cursor = 0; // cursor position within buf
     let pasting = false;
     let done = false;
+    let screenRow = 0; // current terminal row relative to prompt start
+
+    // Strip ANSI to compute visible prompt length
+    const promptLen = prompt.replace(/\x1b\[[0-9;]*m/g, "").length;
 
     out.write(prompt);
     process.stdin.setRawMode(true);
     process.stdin.resume();
     out.write("\x1b[?2004h"); // enable bracketed paste
 
-    /** Rewrite the line from cursor to end (used after insert/delete in middle) */
-    function refreshFromCursor() {
-      const tail = buf.slice(cursor);
-      out.write(tail + " "); // overwrite + clear last char
-      // move back to cursor position
-      const back = tail.length + 1;
-      if (back > 0) out.write(`\x1b[${back}D`);
+    /** Compute terminal row (0-based from prompt start) for a buffer position */
+    function rowOf(pos: number): number {
+      const cols = process.stderr.columns || 80;
+      const lines = buf.slice(0, pos).split("\n");
+      let row = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const len = (i === 0 ? promptLen : 0) + lines[i].length;
+        // Each logical line takes ceil(len/cols) terminal rows, minimum 1
+        const rows = len === 0 ? 1 : Math.ceil(len / cols) || 1;
+        row += i < lines.length - 1 ? rows : 0; // don't count the line the pos is on
+      }
+      return row;
+    }
+
+    /** Compute terminal column (0-based) for a buffer position */
+    function colOf(pos: number): number {
+      const cols = process.stderr.columns || 80;
+      const lastNl = buf.lastIndexOf("\n", pos - 1);
+      const lineStart = lastNl + 1;
+      const offset = lineStart === 0 ? promptLen : 0;
+      const linePos = offset + (pos - lineStart);
+      return linePos % cols;
+    }
+
+    /** Total terminal rows occupied by prompt + buffer */
+    function totalRows(): number {
+      const cols = process.stderr.columns || 80;
+      const lines = buf.split("\n");
+      let rows = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const len = (i === 0 ? promptLen : 0) + lines[i].length;
+        rows += len === 0 ? 1 : Math.ceil(len / cols) || 1;
+      }
+      return rows;
+    }
+
+    /** Full redraw from prompt start. */
+    function redraw() {
+      // Move to prompt start using tracked screen position
+      out.write("\r");
+      if (screenRow > 0) out.write(`\x1b[${screenRow}A`);
+      out.write("\x1b[J"); // clear to end of screen
+      out.write(prompt + buf.replace(/\n/g, "\r\n"));
+      // Position cursor
+      const targetRow = rowOf(cursor);
+      const endRow = totalRows() - 1;
+      const rowsBack = endRow - targetRow;
+      const col = colOf(cursor);
+      if (rowsBack > 0) out.write(`\x1b[${rowsBack}A`);
+      out.write("\r");
+      if (col > 0) out.write(`\x1b[${col}C`);
+      screenRow = targetRow;
     }
 
     function finish(cancelled: boolean) {
       if (done) return;
       done = true;
+      // Move to end of content before exiting
+      const rowsDown = totalRows() - 1 - screenRow;
+      if (rowsDown > 0) out.write(`\x1b[${rowsDown}B`);
       out.write("\x1b[?2004l"); // disable bracketed paste
       out.write("\n");
       process.stdin.setRawMode(false);
@@ -225,30 +277,18 @@ function readMultiline(prompt: string): { promise: Promise<string>; cancel: () =
       while (p > 0 && buf[p - 1] !== " ") p--;
       return p;
     }
-    function moveCursor(to: number) {
-      if (to === cursor) return;
-      if (to < cursor) out.write(`\x1b[${cursor - to}D`);
-      else out.write(`\x1b[${to - cursor}C`);
-      cursor = to;
-    }
     /** Kill from cursor to end of line */
     function killToEnd() {
-      if (cursor < buf.length) {
-        const erased = buf.length - cursor;
-        buf = buf.slice(0, cursor);
-        out.write(" ".repeat(erased));
-        out.write(`\x1b[${erased}D`);
-      }
+      buf = buf.slice(0, cursor);
+      redraw();
     }
     /** Delete word backward (Ctrl+W) */
     function deleteWordBack() {
       const to = wordLeft();
       if (to === cursor) return;
-      const removed = cursor - to;
       buf = buf.slice(0, to) + buf.slice(cursor);
       cursor = to;
-      out.write(`\x1b[${removed}D`);
-      refreshFromCursor();
+      redraw();
     }
 
     /**
@@ -283,29 +323,25 @@ function readMultiline(prompt: string): { promise: Promise<string>; cancel: () =
 
       switch (final) {
         case "D": // Left
-          if (ctrl) moveCursor(wordLeft());
-          else if (cursor > 0) { cursor--; out.write("\x1b[D"); }
+          if (ctrl) { cursor = wordLeft(); redraw(); }
+          else if (cursor > 0) { cursor--; redraw(); }
           break;
         case "C": // Right
-          if (ctrl) moveCursor(wordRight());
-          else if (cursor < buf.length) { cursor++; out.write("\x1b[C"); }
+          if (ctrl) { cursor = wordRight(); redraw(); }
+          else if (cursor < buf.length) { cursor++; redraw(); }
           break;
         case "H": // Home
-          moveCursor(0);
+          cursor = 0; redraw();
           break;
         case "F": // End
-          moveCursor(buf.length);
+          cursor = buf.length; redraw();
           break;
         case "~":
-          if (code === "3") { // Delete
-            if (cursor < buf.length) {
-              buf = buf.slice(0, cursor) + buf.slice(cursor + 1);
-              refreshFromCursor();
-            }
+          if (code === "3" && cursor < buf.length) { // Delete
+            buf = buf.slice(0, cursor) + buf.slice(cursor + 1);
+            redraw();
           }
-          // else: ignore other ~ sequences (PgUp, PgDn, etc.)
           break;
-        // ignore everything else
       }
       return i;
     }
@@ -316,18 +352,18 @@ function readMultiline(prompt: string): { promise: Promise<string>; cancel: () =
         if (pasting) {
           const end = s.indexOf("\x1b[201~");
           if (end >= 0) {
-            const text = s.slice(0, end);
+            const text = s.slice(0, end).replace(/\r\n?|\n/g, "\n"); // normalize newlines
             buf = buf.slice(0, cursor) + text + buf.slice(cursor);
-            out.write(text);
             cursor += text.length;
-            if (cursor < buf.length) refreshFromCursor();
             pasting = false;
             s = s.slice(end + 6);
+            redraw();
           } else {
-            buf = buf.slice(0, cursor) + s + buf.slice(cursor);
-            out.write(s);
-            cursor += s.length;
+            const text = s.replace(/\r\n?|\n/g, "\n"); // normalize newlines
+            buf = buf.slice(0, cursor) + text + buf.slice(cursor);
+            cursor += text.length;
             s = "";
+            redraw();
           }
         } else {
           const ps = s.indexOf("\x1b[200~");
@@ -343,24 +379,18 @@ function readMultiline(prompt: string): { promise: Promise<string>; cancel: () =
               if (cursor > 0) {
                 buf = buf.slice(0, cursor - 1) + buf.slice(cursor);
                 cursor--;
-                out.write("\b");
-                refreshFromCursor();
+                redraw();
               }
             } else if (c === 0x1b) {                                // ESC sequence
               i = handleCSI(chunk, i) - 1; // -1 because for loop does i++
             } else if (c === 0x01) {                                // Ctrl+A (Home)
-              moveCursor(0);
+              cursor = 0; redraw();
             } else if (c === 0x05) {                                // Ctrl+E (End)
-              moveCursor(buf.length);
+              cursor = buf.length; redraw();
             } else if (c >= 0x20) {
               buf = buf.slice(0, cursor) + chunk[i] + buf.slice(cursor);
               cursor++;
-              if (cursor < buf.length) {
-                out.write(chunk[i]);
-                refreshFromCursor();
-              } else {
-                out.write(chunk[i]);
-              }
+              redraw();
             }
           }
 
@@ -380,7 +410,7 @@ function readMultiline(prompt: string): { promise: Promise<string>; cancel: () =
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
     try {
-      const content = await readMultiline("TODO> ").promise;
+      const content = await readMultiline("\x1b[97mTODO>\x1b[0m ").promise;
       if (!content) { process.stderr.write("Error: Empty input\n"); process.exit(1); }
       return content;
     } catch {
@@ -426,7 +456,7 @@ async function interactiveLoop(
         if (!ignoreActivity.has(msgType)) activityResolve?.();
       });
 
-      const { promise: inputPromise, cancel: cancelInput } = readMultiline("TODO> ");
+      const { promise: inputPromise, cancel: cancelInput } = readMultiline("\x1b[97mTODO>\x1b[0m ");
 
       const winner = await Promise.race([
         inputPromise.then((v) => ({ tag: "input" as const, value: v })),
