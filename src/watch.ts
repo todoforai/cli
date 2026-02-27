@@ -20,8 +20,8 @@ const RESET = "\x1b[0m";
 
 function classifyBlock(info: any): string {
   const inner = (info.block_type || "").toLowerCase();
-  if (["create", "createfile"].includes(inner)) return "file";
-  if (["modify", "modifyfile", "update", "edit"].includes(inner)) return "file";
+  if (["create", "createfile"].includes(inner)) return "create";
+  if (["modify", "modifyfile", "update", "edit"].includes(inner)) return "edit";
   if (["catfile", "read", "readfile"].includes(inner)) return "read";
   if (inner === "mcp") return "mcp";
   if (["shell", "bash"].includes(inner) || info.cmd) return "shell";
@@ -29,7 +29,7 @@ function classifyBlock(info: any): string {
 }
 
 function blockDisplay(info: any): [string, string] {
-  const labels: Record<string, string> = { file: "File", read: "Read File", mcp: "MCP", shell: "Shell" };
+  const labels: Record<string, string> = { create: "File", edit: "Edit", read: "Read File", mcp: "MCP", shell: "Shell" };
   const kind = classifyBlock(info);
   const typeLabel = labels[kind] || info.block_type || "Tool";
   const skipKeys = new Set([
@@ -113,6 +113,7 @@ export async function watchTodo(
   // Persist diffs across watchTodo instances for a given websocket connection
   const diffStore = diffStoreByWs.get(ws) ?? new Map<string, DiffEntry>();
   diffStoreByWs.set(ws, diffStore);
+  const diffRendered = new Set<string>();
 
   let approveAll = !!opts.autoApprove;
   let interruptCount = 0;
@@ -163,7 +164,7 @@ export async function watchTodo(
     // Register blocks now so late-arriving diffs can render during the wait
     activeApprovalBlocks = blocks;
     // Brief pause so preprocess_tool's async diff BLOCK_UPDATE can arrive before we render
-    const hasFileBlocks = blocks.some(bi => classifyBlock(bi) === "file");
+    const hasFileBlocks = blocks.some(bi => ["create", "edit"].includes(classifyBlock(bi)));
     if (hasFileBlocks) await new Promise(r => setTimeout(r, 1500));
     process.stderr.write(`\n${YELLOW}⚠ ${blocks.length} action(s) awaiting approval:${RESET}\n`);
     for (const bi of blocks) {
@@ -176,7 +177,8 @@ export async function watchTodo(
       }
       // Show word-level diff if already available
       const diff = diffStore.get(bi.blockId);
-      if (diff) {
+      if (diff && !diffRendered.has(bi.blockId)) {
+        diffRendered.add(bi.blockId);
         const filePath = bi.path || bi.filePath || "file";
         process.stderr.write(renderDiff(diff.originalContent, diff.modifiedContent, filePath));
       }
@@ -250,13 +252,12 @@ export async function watchTodo(
           modifiedContent: updates.modifiedContent ?? "",
         });
       }
-      // Render late-arriving diff while approval prompt is active
-      if (updates.originalContent !== undefined || updates.modifiedContent !== undefined) {
-        const bi = activeApprovalBlocks.find(b => b.blockId === payload.blockId);
-        if (bi) {
-          const filePath = bi.path || bi.filePath || updates.path || "file";
-          process.stderr.write(renderDiff(updates.originalContent || "", updates.modifiedContent || "", filePath));
-        }
+      // Render diff whenever originalContent/modifiedContent arrive (approval, auto-approve, or post-completion)
+      if ((updates.originalContent !== undefined || updates.modifiedContent !== undefined) && !diffRendered.has(payload.blockId)) {
+        diffRendered.add(payload.blockId);
+        const bi = blocksStore.get(payload.blockId) || {};
+        const filePath = bi.path || bi.filePath || updates.path || "file";
+        process.stderr.write(renderDiff(updates.originalContent || "", updates.modifiedContent || "", filePath));
       }
       if (result) {
         process.stderr.write(`\n${DIM}--- Block Result ---\n${result}${RESET}\n`);
@@ -274,8 +275,9 @@ export async function watchTodo(
     } else if (msgType === "block:start_universal") {
       const skip = new Set(["userId", "messageId", "todoId", "blockId", "block_type", "edge_id", "timeout"]);
       const blockType = payload.block_type || "UNIVERSAL";
+      const isEdit = classifyBlock(payload) === "edit";
       const parts = Object.entries(payload)
-        .filter(([k]) => !skip.has(k))
+        .filter(([k]) => !skip.has(k) && !(isEdit && k === "changes"))
         .map(([k, v]) => `${k}=${v}`);
       const extra = parts.length ? ` ${parts.join(" ")}` : "";
       process.stderr.write(`\n${YELLOW}*${RESET} ${YELLOW}${blockType}${RESET}${extra}\n`);
