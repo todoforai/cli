@@ -4,18 +4,7 @@ import { diff_match_patch } from "diff-match-patch";
 import { highlight, Theme } from "cli-highlight";
 import { extname } from "path";
 import chalk from "chalk";
-
-const WHITE = "\x1b[38;2;255;255;255m";
-const DIM = "\x1b[2m";
-const CYAN = "\x1b[36m";
-const BOLD = "\x1b[1m";
-const RESET = "\x1b[0m";
-// Line-level backdrop
-const BG_RED = "\x1b[48;2;55;20;20m";
-const BG_GREEN = "\x1b[48;2;20;45;20m";
-// Word-level emphasis
-const BG_RED_HL = "\x1b[48;2;100;35;35m";
-const BG_GREEN_HL = "\x1b[48;2;35;85;35m";
+import { WHITE, DIM_ATTR as DIM, CYAN, BOLD, RESET, BG_RED, BG_GREEN, BG_RED_HL, BG_GREEN_HL } from "./colors";
 
 const CONTEXT_LINES = 3;
 const MAX_OUTPUT_LINES = 80;

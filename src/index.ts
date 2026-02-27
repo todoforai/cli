@@ -4,10 +4,8 @@
  * Usage: todoai "prompt text" | echo "content" | todoai [options]
  */
 
-import { parseArgs } from "util";
-import { createInterface } from "readline";
 import { realpathSync } from "fs";
-import { resolve, basename } from "path";
+import { resolve } from "path";
 import { homedir } from "os";
 
 import { randomTip } from "./tips";
@@ -15,82 +13,14 @@ import { ApiClient } from "todoforai-edge/src/api";
 import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
 import { normalizeApiUrl } from "todoforai-edge/src/config";
 
+import { DEFAULT_API_URL, getEnv, printUsage, parseCliArgs } from "./args";
+import { readLine, readMultiline, readStdin } from "./input";
+import { getAgentWorkspacePaths, findAgentByPath, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
+import { BRIGHT_WHITE, CYAN, DIM, GREEN, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
-
-// ── arg parsing ──────────────────────────────────────────────────────
-
-const DEFAULT_API_URL = "https://api.todofor.ai";
-
-function getEnv(name: string): string {
-  return process.env[`TODOFORAI_${name}`] || process.env[`TODO4AI_${name}`] || "";
-}
-
-function printUsage() {
-  process.stderr.write(`
-todoai — TODOforAI CLI (Bun)
-
-Usage:
-  todoai "prompt text"                  # Prompt as argument
-  todoai -p "Quick task"               # Print mode (non-interactive)
-  echo "content" | todoai              # Pipe from stdin
-  todoai --path /my/project "Fix bug"  # Explicit workspace path
-  todoai -c                            # Resume last todo
-  todoai --resume <todo-id>            # Resume specific todo
-
-Options:
-  --path <dir>             Workspace path (default: cwd)
-  --project <id>           Project ID
-  --agent, -a <name>       Agent name (partial match)
-  --api-url <url>          API URL
-  --api-key <key>          API key
-  --resume, -r [todo-id]   Resume existing todo
-  --continue, -c           Continue most recent todo
-  --print, -p              Non-interactive: run single message and exit
-  --no-watch               Create todo and exit
-  --json                   Output as JSON
-  --safe                   Validate API key upfront
-  --debug, -d              Debug output
-  --show-config            Show config
-  --set-defaults           Interactive defaults setup
-  --set-default-api-url    Set default API URL
-  --set-default-api-key    Set default API key
-  --reset-config           Reset config file
-  --help, -h               Show this help
-`);
-}
-
-function parseCliArgs() {
-  const { values, positionals } = parseArgs({
-    args: process.argv.slice(2),
-    options: {
-      path: { type: "string", default: "." },
-      project: { type: "string" },
-      agent: { type: "string", short: "a" },
-      "api-url": { type: "string" },
-      "api-key": { type: "string" },
-      resume: { type: "string", short: "r" },
-      continue: { type: "boolean", short: "c", default: false },
-      print: { type: "boolean", short: "p", default: false },
-      "no-watch": { type: "boolean", default: false },
-      json: { type: "boolean", default: false },
-      safe: { type: "boolean", default: false },
-      debug: { type: "boolean", short: "d", default: false },
-      "show-config": { type: "boolean", default: false },
-      "set-defaults": { type: "boolean", default: false },
-      "set-default-api-url": { type: "string" },
-      "set-default-api-key": { type: "string" },
-      "reset-config": { type: "boolean", default: false },
-      "config-path": { type: "string" },
-      help: { type: "boolean", short: "h", default: false },
-    },
-    allowPositionals: true,
-    strict: false,
-  });
-  return { values, positionals };
-}
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -99,359 +29,11 @@ function formatPathWithTilde(path: string): string {
   return path.startsWith(home) ? path.replace(home, "~") : path;
 }
 
-function getAgentWorkspacePaths(agent: any): string[] {
-  const paths: string[] = [];
-  for (const ec of Object.values(agent.edgesMcpConfigs || {}) as any[]) {
-    const tc = ec?.todoai_edge || ec?.todoai || {};
-    paths.push(...(tc.workspacePaths || []));
-  }
-  return paths;
-}
-
-function findAgentByPath(agents: any[], path: string): any | null {
-  const resolved = realpathSync(resolve(path));
-  for (const agent of agents) {
-    for (const wp of getAgentWorkspacePaths(agent)) {
-      try {
-        if (realpathSync(resolve(wp)) === resolved) return agent;
-      } catch {}
-    }
-  }
-  return null;
-}
-
-async function autoCreateAgent(api: ApiClient, resolvedPath: string, agents: any[]): Promise<any> {
-  const folderName = basename(resolvedPath) || "default";
-
-  // 1. Create agent
-  const resp = await api.createAgent();
-  const agentId = resp.id || resp.agentSettingsId;
-  if (!agentId) throw new Error(`Failed to create agent: ${JSON.stringify(resp)}`);
-  const agentSettingsId = resp.agentSettingsId || agentId;
-
-  // 2. Set name
-  await api.updateAgentSettings(agentId, agentSettingsId, { name: folderName });
-
-  // 3. Find edge ID from existing agents or fetch /edges
-  let edgeId: string | null = null;
-  for (const a of agents) {
-    const keys = Object.keys(a.edgesMcpConfigs || {});
-    if (keys.length) { edgeId = keys[0]; break; }
-  }
-  if (!edgeId) {
-    const edges = await api.listEdges();
-    if (Array.isArray(edges) && edges.length) edgeId = edges[0].id;
-  }
-  if (!edgeId) throw new Error("No edge available to configure workspace path");
-
-  // 4. Set workspace path
-  await api.setAgentEdgeMcpConfig(agentId, agentSettingsId, edgeId, "todoai_edge", { workspacePaths: [resolvedPath] });
-
-  // 5. Re-fetch full agent
-  const allAgents = await api.listAgentSettings();
-  const found = allAgents.find((a: any) => getItemId(a) === agentId);
-  if (found) return found;
-
-  // Fallback
-  resp.name = folderName;
-  resp.edgesMcpConfigs = { [edgeId]: { todoai_edge: { workspacePaths: [resolvedPath] } } };
-  return resp;
-}
-
 function getFrontendUrl(apiUrl: string, projectId: string, todoId: string): string {
   if (apiUrl.includes("localhost:4000") || apiUrl.includes("127.0.0.1:4000")) {
     return `http://localhost:3000/${projectId}/${todoId}`;
   }
   return `https://todofor.ai/${projectId}/${todoId}`;
-}
-
-function readLine(prompt: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  return new Promise((res) => {
-    rl.question(prompt, (ans) => {
-      rl.close();
-      res(ans.trim());
-    });
-  });
-}
-
-/** Raw-mode prompt with bracketed paste: multiline paste preserved, Enter submits.
- *  Returns { promise, cancel } — call cancel() to abort the prompt externally. */
-function readMultiline(prompt: string): { promise: Promise<string>; cancel: () => void } {
-  let cancelFn: () => void = () => {};
-  const promise = new Promise<string>((resolve, reject) => {
-    const out = process.stderr;
-    let buf = "";
-    let cursor = 0; // cursor position within buf
-    let pasting = false;
-    let done = false;
-    let screenRow = 0; // current terminal row relative to prompt start
-
-    // Strip ANSI to compute visible prompt length
-    const promptLen = prompt.replace(/\x1b\[[0-9;]*m/g, "").length;
-
-    out.write(prompt);
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    out.write("\x1b[?2004h"); // enable bracketed paste
-
-    /** Compute terminal row (0-based from prompt start) for a buffer position.
-     *  Matches terminal deferred-wrap behavior: cursor at exactly N*cols
-     *  is on the last column of the current row, not column 0 of the next. */
-    function rowOf(pos: number): number {
-      const cols = process.stderr.columns || 80;
-      const lines = buf.slice(0, pos).split("\n");
-      let row = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const len = (i === 0 ? promptLen : 0) + lines[i].length;
-        if (i < lines.length - 1) {
-          // Full logical line (followed by \n): occupies ceil(len/cols) rows
-          row += len === 0 ? 1 : Math.ceil(len / cols);
-        } else {
-          // Cursor line: ceil(len/cols)-1 gives the 0-based row within
-          // this logical line. At exact multiples of cols the cursor is
-          // at the end of the row (deferred wrap), not on a new row.
-          row += len > 0 ? Math.ceil(len / cols) - 1 : 0;
-        }
-      }
-      return row;
-    }
-
-    /** Compute terminal column (0-based) for a buffer position.
-     *  At an exact wrap boundary (linePos is nonzero multiple of cols),
-     *  returns cols to indicate the cursor is past the last column
-     *  (deferred wrap state). */
-    function colOf(pos: number): number {
-      const cols = process.stderr.columns || 80;
-      const lastNl = buf.lastIndexOf("\n", pos - 1);
-      const lineStart = lastNl + 1;
-      const offset = lineStart === 0 ? promptLen : 0;
-      const linePos = offset + (pos - lineStart);
-      if (linePos > 0 && linePos % cols === 0) return cols;
-      return linePos % cols;
-    }
-
-    /** Total terminal rows occupied by prompt + buffer content.
-     *  Each logical line occupies ceil(len/cols) rows (minimum 1). */
-    function totalRows(): number {
-      const cols = process.stderr.columns || 80;
-      const lines = buf.split("\n");
-      let rows = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const len = (i === 0 ? promptLen : 0) + lines[i].length;
-        rows += len === 0 ? 1 : Math.ceil(len / cols);
-      }
-      return rows;
-    }
-
-    /** Full redraw from prompt start. */
-    function redraw() {
-      const cols = process.stderr.columns || 80;
-      // Move to prompt start using tracked screen position
-      out.write("\r");
-      if (screenRow > 0) out.write(`\x1b[${screenRow}A`);
-      out.write("\x1b[J"); // clear to end of screen
-      out.write(prompt + buf.replace(/\n/g, "\r\n"));
-      // Position cursor at target row/col.
-      // rowOf/colOf match the terminal's deferred-wrap behavior, so the
-      // end-of-content position is always totalRows()-1 (same as terminal).
-      const targetRow = rowOf(cursor);
-      const endRow = totalRows() - 1;
-      const rowsBack = endRow - targetRow;
-      const col = colOf(cursor);
-      if (rowsBack > 0) out.write(`\x1b[${rowsBack}A`);
-      if (col <= cols) {
-        out.write("\r");
-        if (col > 0 && col < cols) out.write(`\x1b[${col}C`);
-        // col === cols: deferred wrap — move to last column explicitly
-        if (col === cols) out.write(`\x1b[${cols}G`);
-      }
-      screenRow = targetRow;
-    }
-
-    function finish(cancelled: boolean) {
-      if (done) return;
-      done = true;
-      // Move to end of content before exiting
-      const rowsDown = totalRows() - 1 - screenRow;
-      if (rowsDown > 0) out.write(`\x1b[${rowsDown}B`);
-      out.write("\x1b[?2004l"); // disable bracketed paste
-      out.write("\n");
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-      process.stdin.removeListener("data", onData);
-      if (cancelled) reject(new Error("cancelled"));
-      else resolve(buf.trim());
-    }
-
-    /** Find next word boundary to the right */
-    function wordRight(): number {
-      let p = cursor;
-      while (p < buf.length && buf[p] === " ") p++;
-      while (p < buf.length && buf[p] !== " ") p++;
-      return p;
-    }
-    /** Find next word boundary to the left */
-    function wordLeft(): number {
-      let p = cursor;
-      while (p > 0 && buf[p - 1] === " ") p--;
-      while (p > 0 && buf[p - 1] !== " ") p--;
-      return p;
-    }
-    /** Kill from cursor to end of line */
-    function killToEnd() {
-      buf = buf.slice(0, cursor);
-      redraw();
-    }
-    /** Delete word backward (Ctrl+W) */
-    function deleteWordBack() {
-      const to = wordLeft();
-      if (to === cursor) return;
-      buf = buf.slice(0, to) + buf.slice(cursor);
-      cursor = to;
-      redraw();
-    }
-
-    /**
-     * Parse a CSI sequence starting at chunk[i] where chunk[i] === '\x1b'.
-     * Returns the new index i (after consuming the sequence).
-     * CSI = ESC [ (params) (letter)  e.g. \x1b[1;5D
-     */
-    function handleCSI(chunk: string, start: number): number {
-      let i = start + 1; // skip ESC
-      if (i >= chunk.length || chunk[i] !== "[") {
-        // Not CSI - skip ESC + one char
-        if (i < chunk.length) i++;
-        return i;
-      }
-      i++; // skip '['
-
-      // Collect parameter bytes (digits, semicolons)
-      let params = "";
-      while (i < chunk.length && /[0-9;]/.test(chunk[i])) {
-        params += chunk[i];
-        i++;
-      }
-      // Final byte (letter or ~)
-      const final = i < chunk.length ? chunk[i] : "";
-      i++; // skip final byte
-
-      // Parse modifier: "1;5" means modifier=5 (Ctrl), etc.
-      const parts = params.split(";");
-      const modifier = parts.length > 1 ? parseInt(parts[1]) : 0;
-      const code = parts[0] || "";
-      const ctrl = modifier === 5;
-
-      switch (final) {
-        case "D": // Left
-          if (ctrl) { cursor = wordLeft(); redraw(); }
-          else if (cursor > 0) { cursor--; redraw(); }
-          break;
-        case "C": // Right
-          if (ctrl) { cursor = wordRight(); redraw(); }
-          else if (cursor < buf.length) { cursor++; redraw(); }
-          break;
-        case "H": // Home
-          cursor = 0; redraw();
-          break;
-        case "F": // End
-          cursor = buf.length; redraw();
-          break;
-        case "~":
-          if (code === "3" && cursor < buf.length) { // Delete
-            buf = buf.slice(0, cursor) + buf.slice(cursor + 1);
-            redraw();
-          }
-          break;
-      }
-      return i;
-    }
-
-    function onData(data: Buffer) {
-      let s = data.toString("utf-8");
-      while (s.length > 0 && !done) {
-        if (pasting) {
-          const end = s.indexOf("\x1b[201~");
-          if (end >= 0) {
-            const text = s.slice(0, end).replace(/\r\n?|\n/g, "\n"); // normalize newlines
-            buf = buf.slice(0, cursor) + text + buf.slice(cursor);
-            cursor += text.length;
-            pasting = false;
-            s = s.slice(end + 6);
-            redraw();
-          } else {
-            const text = s.replace(/\r\n?|\n/g, "\n"); // normalize newlines
-            buf = buf.slice(0, cursor) + text + buf.slice(cursor);
-            cursor += text.length;
-            s = "";
-            redraw();
-          }
-        } else {
-          const ps = s.indexOf("\x1b[200~");
-          const chunk = ps >= 0 ? s.slice(0, ps) : s;
-
-          for (let i = 0; i < chunk.length && !done; i++) {
-            const c = chunk.charCodeAt(i);
-            if (c === 0x03) { finish(true); return; }              // Ctrl+C
-            if (c === 0x0d || c === 0x0a) { finish(false); return; } // Enter
-            if (c === 0x17) { deleteWordBack(); }                   // Ctrl+W
-            else if (c === 0x0b) { killToEnd(); }                   // Ctrl+K
-            else if (c === 0x7f || c === 0x08) {                    // Backspace
-              if (cursor > 0) {
-                buf = buf.slice(0, cursor - 1) + buf.slice(cursor);
-                cursor--;
-                redraw();
-              }
-            } else if (c === 0x1b) {                                // ESC sequence
-              // Alt+Enter (ESC + CR) → insert newline
-              if (i + 1 < chunk.length && chunk.charCodeAt(i + 1) === 0x0d) {
-                buf = buf.slice(0, cursor) + "\n" + buf.slice(cursor);
-                cursor++;
-                i++; // skip the \r
-                redraw();
-              } else {
-                i = handleCSI(chunk, i) - 1; // -1 because for loop does i++
-              }
-            } else if (c === 0x01) {                                // Ctrl+A (Home)
-              cursor = 0; redraw();
-            } else if (c === 0x05) {                                // Ctrl+E (End)
-              cursor = buf.length; redraw();
-            } else if (c >= 0x20) {
-              buf = buf.slice(0, cursor) + chunk[i] + buf.slice(cursor);
-              cursor++;
-              redraw();
-            }
-          }
-
-          if (ps >= 0) { pasting = true; s = s.slice(ps + 6); }
-          else s = "";
-        }
-      }
-    }
-
-    process.stdin.on("data", onData);
-
-    cancelFn = () => finish(true);
-  });
-  return { promise, cancel: () => cancelFn() };
-}
-
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) {
-    try {
-      const content = await readMultiline("\x1b[97mTODO>\x1b[0m ").promise;
-      if (!content) { process.stderr.write("Error: Empty input\n"); process.exit(1); }
-      return content;
-    } catch {
-      process.stderr.write("\nCancelled\n"); process.exit(1);
-    }
-  }
-  // Piped
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  const content = Buffer.concat(chunks).toString("utf-8").trim();
-  if (!content) { process.stderr.write("Error: Empty input\n"); process.exit(1); }
-  return content;
 }
 
 // ── interactive loop ─────────────────────────────────────────────────
@@ -483,7 +65,7 @@ async function interactiveLoop(
         if (!ignoreActivity.has(msgType)) activityResolve?.();
       });
 
-      const { promise: inputPromise, cancel: cancelInput } = readMultiline("\x1b[97mTODO>\x1b[0m ");
+      const { promise: inputPromise, cancel: cancelInput } = readMultiline(`${BRIGHT_WHITE}TODO>${RESET} `);
 
       const winner = await Promise.race([
         inputPromise.then((v) => ({ tag: "input" as const, value: v })),
@@ -596,7 +178,7 @@ async function main() {
 
     // Display existing messages
     for (const msg of todo.messages || []) {
-      const role = msg.role === "user" ? "\x1b[36mYou\x1b[0m" : "\x1b[32mAI\x1b[0m";
+      const role = msg.role === "user" ? `${CYAN}You${RESET}` : `${GREEN}AI${RESET}`;
       process.stderr.write(`${role}: ${(msg.content || "").slice(0, 200)}\n`);
     }
 
@@ -650,10 +232,10 @@ async function main() {
       ? formatPathWithTilde(paths[0]) 
       : JSON.stringify(paths.map(formatPathWithTilde));
     process.stderr.write(
-      `\x1b[90mAgent:\x1b[0m \x1b[38;2;249;110;46m${getDisplayName(preMatchedAgent)}\x1b[0m \x1b[90m│ ${pathLabel}:\x1b[0m \x1b[36m${pathStr}\x1b[0m\n`,
+      `${DIM}Agent:${RESET} ${BRAND}${getDisplayName(preMatchedAgent)}${RESET} ${DIM}│ ${pathLabel}:${RESET} ${CYAN}${pathStr}${RESET}\n`,
     );
   }
-  process.stderr.write(`\x1b[90mTip: ${randomTip()}\x1b[0m\n`);
+  process.stderr.write(`${DIM}Tip: ${randomTip()}${RESET}\n`);
 
   // ── read content ──
   let content: string;
@@ -722,7 +304,7 @@ async function main() {
   if (args.json) {
     console.log(JSON.stringify({ ...todo, frontend_url: frontendUrl }, null, 2));
   } else {
-    process.stderr.write(`\x1b[90mTODO:\x1b[0m \x1b[36m${frontendUrl}\x1b[0m\n`);
+    process.stderr.write(`${DIM}TODO:${RESET} ${CYAN}${frontendUrl}${RESET}\n`);
   }
 
   // ── watch ──
