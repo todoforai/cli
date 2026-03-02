@@ -15,7 +15,7 @@ import { normalizeApiUrl } from "todoforai-edge/src/config";
 
 import { DEFAULT_API_URL, getEnv, printUsage, parseCliArgs } from "./args";
 import { readLine, readMultiline, readStdin } from "./input";
-import { getAgentWorkspacePaths, findAgentByPath, autoCreateAgent } from "./agent";
+import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
@@ -197,26 +197,27 @@ async function main() {
   let agents: any[] | null = null;
 
   if (args.agent) {
-    agents = await api.listAgentSettings();
-    const name = (args.agent as string).toLowerCase();
-    preMatchedAgent = agents.find((a: any) => getDisplayName(a).toLowerCase().includes(name));
-    if (!preMatchedAgent) {
-      process.stderr.write(`Error: Agent '${args.agent}' not found\nAvailable agents:\n`);
-      for (const a of agents) process.stderr.write(`  - ${getDisplayName(a)}\n`);
+    const matches = await api.listAgentSettings({ name: args.agent as string });
+    if (matches.length > 0) {
+      preMatchedAgent = matches[0];
+    } else {
+      process.stderr.write(`Error: Agent '${args.agent}' not found\n`);
       process.exit(1);
     }
     cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
-  } else if (args.path) {
-    agents = await api.listAgentSettings();
-    const found = findAgentByPath(agents, args.path as string);
-    if (found) {
-      preMatchedAgent = found;
-      cfg.setDefaultAgent(getDisplayName(found), found);
-    } else {
-      const resolved = realpathSync(resolve(args.path as string));
+  } else {
+    // Resolve from --path or cwd
+    const pathArg = (args.path as string) || ".";
+    const resolved = realpathSync(resolve(pathArg));
+    const matches = await api.listAgentSettings({ workspacePath: resolved });
+    if (matches.length > 0) {
+      preMatchedAgent = matches[0];
+      cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
+    } else if (args.path) {
+      // Explicit --path with no match — auto-create
       process.stderr.write(`No agent found for '${formatPathWithTilde(resolved)}', creating one...\n`);
       try {
-        preMatchedAgent = await autoCreateAgent(api, resolved, agents);
+        preMatchedAgent = await autoCreateAgent(api, resolved);
         cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
       } catch (e: any) {
         process.stderr.write(`Error: Failed to auto-create agent: ${e.message}\n`);
@@ -253,7 +254,7 @@ async function main() {
   let projects: any[] | null = null;
   if (!hasProject || !hasAgent || args.safe || args.debug) {
     projects = await api.listProjects();
-    if (!agents) agents = await api.listAgentSettings();
+    if (!hasAgent && !agents) agents = await api.listAgentSettings();
   }
 
   // Select project

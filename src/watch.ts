@@ -3,6 +3,7 @@
 import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
 import { singleChar } from "./select";
 import { getBlockPatterns } from "@shared/fbe/bashPatterns";
+import { getNewPatterns } from "@shared/fbe/permissionUtils";
 import { renderDiff } from "./diff-view";
 import { YELLOW, GREEN, RED, DIM, CYAN, RESET } from "./colors";
 
@@ -177,14 +178,15 @@ export async function watchTodo(
       }
     }
 
-    // Pre-compute patterns for the remember hint
+    // Pre-compute patterns for the remember hint (hide already-allowed)
     const allPatterns = blocks.flatMap(bi => getBlockPatterns({
       type: bi.block_type || "unknown",
       generalized_pattern: bi.generalized_pattern,
       cmd: bi.cmd,
     }));
+    const newPatterns = getNewPatterns(allPatterns, opts.agentSettings?.permissions);
     const stripPrefix = (p: string) => p.replace(/^todoai_(edge|cloud):/, '');
-    const patternHint = allPatterns.length ? ` ${DIM}${allPatterns.map(stripPrefix).join(", ")}${RESET}` : "";
+    const patternHint = newPatterns.length ? ` ${DIM}${newPatterns.map(stripPrefix).join(", ")}${RESET}` : "";
 
     try {
       const response = await singleChar(`  [Y]es / [n]o / [a]ll / [r]emember${patternHint}? `);
