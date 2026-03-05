@@ -269,7 +269,7 @@ export async function watchTodo(
         signalActivity();
       }
     } else if (msgType === "block:start_universal") {
-      const skip = new Set(["userId", "messageId", "todoId", "blockId", "block_type", "edge_id", "timeout"]);
+      const skip = new Set(["userId", "messageId", "todoId", "blockId", "block_type", "edge_id", "timeout", "parentBlockId"]);
       const blockType = payload.block_type || "UNIVERSAL";
       const isEdit = classifyBlock(payload) === "edit";
       const parts = Object.entries(payload)
@@ -313,8 +313,8 @@ export async function watchTodo(
     const result = await ws.waitForCompletion(todoId, callback);
     process.stdout.write("\n");
     if (!result?.success) {
-      const t = result?.type || "unknown";
-      process.stderr.write(`Warning: Stopped: ${t}\n`);
+      const status = result?.payload?.status || result?.type || "unknown";
+      process.stderr.write(`Warning: Stopped: ${status}\n`);
     }
     return true;
   } catch (e: any) {
