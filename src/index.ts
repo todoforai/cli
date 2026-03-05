@@ -20,7 +20,6 @@ import { ConfigStore } from "./config";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
 import { printFullChat } from "./inspect";
-import { printFullChat } from "./inspect";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
 
@@ -48,6 +47,7 @@ async function interactiveLoop(
   agent: any,
   json: boolean,
   autoApprove: boolean,
+  cfg: ConfigStore,
 ) {
   while (true) {
     try {
@@ -67,7 +67,7 @@ async function interactiveLoop(
         if (!ignoreActivity.has(msgType)) activityResolve?.();
       });
 
-      const { promise: inputPromise, cancel: cancelInput } = readMultiline(`${BRIGHT_WHITE}TODO>${RESET} `);
+      const { promise: inputPromise, cancel: cancelInput } = readMultiline(`${BRIGHT_WHITE}TODO>${RESET} `, cfg.getHistory());
 
       const winner = await Promise.race([
         inputPromise.then((v) => ({ tag: "input" as const, value: v })),
@@ -95,6 +95,7 @@ async function interactiveLoop(
         process.stderr.write("  /exit, /quit, /q  - quit\n  /help, ?          - show help\n");
         continue;
       }
+      cfg.addToHistory(input);
       process.stderr.write("─".repeat(40) + "\n");
       await api.addMessage(projectId, input, agent, todoId);
       await watchTodo(ws, todoId, projectId, {
@@ -271,7 +272,7 @@ async function main() {
     const ws = new FrontendWebSocket(apiUrl, apiKey);
     await ws.connect();
 
-    await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, false);
+    await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, false, cfg);
     await ws.close();
     return;
   }
@@ -316,8 +317,10 @@ async function main() {
     const pathStr = paths.length === 1 
       ? formatPathWithTilde(paths[0]) 
       : JSON.stringify(paths.map(formatPathWithTilde));
+    const model = (args.model as string) || preMatchedAgent.model;
+    const modelSuffix = model ? ` ${DIM}│ Model:${RESET} ${CYAN}${model}${RESET}` : "";
     process.stderr.write(
-      `${DIM}Agent:${RESET} ${BRAND}${getDisplayName(preMatchedAgent)}${RESET} ${DIM}│ ${pathLabel}:${RESET} ${CYAN}${pathStr}${RESET}\n`,
+      `${DIM}Agent:${RESET} ${BRAND}${getDisplayName(preMatchedAgent)}${RESET} ${DIM}│ ${pathLabel}:${RESET} ${CYAN}${pathStr}${RESET}${modelSuffix}\n`,
     );
   }
   process.stderr.write(`${DIM}Tip: ${randomTip()}${RESET}\n`);
@@ -378,7 +381,13 @@ async function main() {
     );
   }
 
+  // ── connect WS before creating todo to avoid missing early events ──
+  const ws = args["no-watch"] ? null : new FrontendWebSocket(apiUrl, apiKey);
+  if (ws) await ws.connect();
+
   // ── create todo ──
+  if (args.model) agent = { ...agent, model: args.model };
+  cfg.addToHistory(content);
   const todo = await api.addMessage(projectId, content, agent);
   const actualTodoId = todo.id || crypto.randomUUID();
   cfg.data.last_todo_id = actualTodoId;
@@ -393,9 +402,7 @@ async function main() {
   }
 
   // ── watch ──
-  if (!args["no-watch"]) {
-    const ws = new FrontendWebSocket(apiUrl, apiKey);
-    await ws.connect();
+  if (ws) {
     const autoApprove = !!args["dangerously-skip-permissions"];
 
     await watchTodo(ws, actualTodoId, projectId, {
@@ -407,14 +414,14 @@ async function main() {
     // ── interactive follow-up ──
     if (!args["non-interactive"]) {
       process.stderr.write(`\n${"─".repeat(40)}\n`);
-      await interactiveLoop(ws, api, actualTodoId, projectId, agent, !!args.json, autoApprove);
+      await interactiveLoop(ws, api, actualTodoId, projectId, agent, !!args.json, autoApprove, cfg);
     }
 
     await ws.close();
   }
 }
 
-main().catch((e) => {
+main().then(() => process.exit(0)).catch((e) => {
   process.stderr.write(`Error: ${e.message}\n`);
   process.exit(1);
 });

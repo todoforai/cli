@@ -41,6 +41,7 @@ export interface ConfigData {
   recent_projects: { id: string; name: string }[];
   recent_agents: string[];
   last_todo_id: string | null;
+  input_history: string[];
 }
 
 function defaultConfig(): ConfigData {
@@ -55,6 +56,7 @@ function defaultConfig(): ConfigData {
     recent_projects: [],
     recent_agents: [],
     last_todo_id: null,
+    input_history: [],
   };
 }
 
@@ -119,5 +121,22 @@ export class ConfigStore {
   setDefaultApiKey(key: string): void {
     this.data.default_api_key = key;
     this.save();
+  }
+
+  addToHistory(input: string): void {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    // Remove duplicates and add to end
+    this.data.input_history = this.data.input_history.filter((h) => h !== trimmed);
+    this.data.input_history.push(trimmed);
+    // Keep last 1000 entries
+    if (this.data.input_history.length > 1000) {
+      this.data.input_history = this.data.input_history.slice(-1000);
+    }
+    this.save();
+  }
+
+  getHistory(): string[] {
+    return this.data.input_history || [];
   }
 }

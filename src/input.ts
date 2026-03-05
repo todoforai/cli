@@ -15,7 +15,7 @@ export function readLine(prompt: string): Promise<string> {
 
 /** Raw-mode prompt with bracketed paste: multiline paste preserved, Enter submits.
  *  Returns { promise, cancel } — call cancel() to abort the prompt externally. */
-export function readMultiline(prompt: string): { promise: Promise<string>; cancel: () => void } {
+export function readMultiline(prompt: string, history?: string[]): { promise: Promise<string>; cancel: () => void } {
   let cancelFn: () => void = () => {};
   const promise = new Promise<string>((resolve, reject) => {
     const out = process.stderr;
@@ -24,6 +24,8 @@ export function readMultiline(prompt: string): { promise: Promise<string>; cance
     let pasting = false;
     let done = false;
     let screenRow = 0; // current terminal row relative to prompt start
+    let historyIndex = -1; // -1 = current input, 0+ = history entries
+    let savedCurrent = ""; // save current input when navigating history
 
     // Strip ANSI to compute visible prompt length
     const promptLen = prompt.replace(/\x1b\[[0-9;]*m/g, "").length;
@@ -188,6 +190,29 @@ export function readMultiline(prompt: string): { promise: Promise<string>; cance
         case "C": // Right
           if (ctrl) { cursor = wordRight(); redraw(); }
           else if (cursor < buf.length) { cursor++; redraw(); }
+          break;
+        case "A": // Up
+          if (history && history.length > 0) {
+            if (historyIndex === -1) savedCurrent = buf;
+            if (historyIndex < history.length - 1) {
+              historyIndex++;
+              buf = history[history.length - 1 - historyIndex];
+              cursor = buf.length;
+              redraw();
+            }
+          }
+          break;
+        case "B": // Down
+          if (history && historyIndex >= 0) {
+            historyIndex--;
+            if (historyIndex === -1) {
+              buf = savedCurrent;
+            } else {
+              buf = history[history.length - 1 - historyIndex];
+            }
+            cursor = buf.length;
+            redraw();
+          }
           break;
         case "H": // Home
           cursor = 0; redraw();
