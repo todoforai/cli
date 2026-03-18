@@ -14,31 +14,32 @@ todoai — TODOforAI CLI (Bun)
 
 Usage:
   todoai "prompt text"                  # Prompt as argument
-  todoai -p "Quick task"               # Print mode (non-interactive)
+  todoai -n "Quick task"               # Non-interactive (run and exit)
   echo "content" | todoai              # Pipe from stdin
   todoai --path /my/project "Fix bug"  # Explicit workspace path
   todoai -c                            # Resume last todo
   todoai --resume <todo-id>            # Resume specific todo
 
 Options:
-  --path <dir>             Workspace path (default: cwd)
-  --project <id>           Project ID
-  --agent, -a <name>       Agent name (partial match)
-  --api-url <url>          API URL
-  --api-key <key>          API key
-  --resume, -r [todo-id]   Resume existing todo
-  --continue, -c           Continue most recent todo
-  --print, -p              Non-interactive: run single message and exit
-  --no-watch               Create todo and exit
-  --json                   Output as JSON
-  --safe                   Validate API key upfront
-  --debug, -d              Debug output
-  --show-config            Show config
-  --set-defaults           Interactive defaults setup
-  --set-default-api-url    Set default API URL
-  --set-default-api-key    Set default API key
-  --reset-config           Reset config file
-  --help, -h               Show this help
+  --path <dir>                    Workspace path (default: cwd)
+  --project <id>                  Project ID
+  --agent, -a <name>              Agent name (partial match)
+  --api-url <url>                 API URL
+  --api-key <key>                 API key
+  --resume, -r [todo-id]          Resume existing todo
+  --continue, -c                  Continue most recent todo
+  --non-interactive, -n           Run to completion and exit without interactive prompt
+  --dangerously-skip-permissions  Auto-approve all blocks (for CI/benchmarks)
+  --no-watch                      Create todo and exit
+  --json                          Output as JSON
+  --safe                          Validate API key upfront
+  --debug, -d                     Debug output
+  --show-config                   Show config
+  --set-defaults                  Interactive defaults setup
+  --set-default-api-url           Set default API URL
+  --set-default-api-key           Set default API key
+  --reset-config                  Reset config file
+  --help, -h                      Show this help
 `);
 }
 
@@ -53,7 +54,8 @@ export function parseCliArgs() {
       "api-key": { type: "string" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
-      print: { type: "boolean", short: "p", default: false },
+      "non-interactive": { type: "boolean", short: "n", default: false },
+      "dangerously-skip-permissions": { type: "boolean", default: false },
       "no-watch": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       safe: { type: "boolean", default: false },

@@ -312,17 +312,18 @@ async function main() {
   if (!args["no-watch"]) {
     const ws = new FrontendWebSocket(apiUrl, apiKey);
     await ws.connect();
+    const autoApprove = !!args["dangerously-skip-permissions"];
 
     await watchTodo(ws, actualTodoId, projectId, {
       json: !!args.json,
-      autoApprove: false,
+      autoApprove,
       agentSettings: agent,
     });
 
     // ── interactive follow-up ──
-    if (!args.print) {
+    if (!args["non-interactive"]) {
       process.stderr.write(`\n${"─".repeat(40)}\n`);
-      await interactiveLoop(ws, api, actualTodoId, projectId, agent, !!args.json, false);
+      await interactiveLoop(ws, api, actualTodoId, projectId, agent, !!args.json, autoApprove);
     }
 
     await ws.close();

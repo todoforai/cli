@@ -78,7 +78,7 @@ export async function watchTodo(
 ): Promise<boolean> {
   const ignore = new Set([
     "todo:msg_start", "todo:msg_done", "todo:msg_stop_sequence",
-    "todo:msg_meta_ai", "todo:status", "todo:new_message_created",
+    "todo:msg_meta_ai", "todo:new_message_created",
     "block:end", "block:sh_msg_start", "block:sh_done",
   ]);
   // Old-style block start events — store info but don't display
@@ -291,6 +291,10 @@ export async function watchTodo(
         process.stderr.write(`${preview}${extra}\n`);
         signalActivity();
       }
+    } else if (msgType === "todo:status") {
+      const status = payload.status || "";
+      process.stderr.write(`\n${DIM}[todo:status] ${status}${RESET}\n`);
+      signalActivity();
     } else if (blockStartEvents.has(msgType)) {
       // Store block info from old-style start events for approval pattern computation
       if (payload.blockId) {
