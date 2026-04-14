@@ -152,37 +152,44 @@ async function main() {
   );
 
   // ── device login ──
-  if (positionals[0] === "login") {
+  if (positionals[0] === "login" && positionals.length === 1) {
     const api = new ApiClient(apiUrl, ""); // no key needed for init
     const { code, url, expiresIn } = await api.initDeviceLogin("cli");
 
     const shortCode = code.slice(-8).toUpperCase();
-    console.log(`\n🔑 Open this URL to authorize:`);
-    console.log(`\x1b[36m${url}\x1b[0m`);
-    console.log(`Verification code: \x1b[1m${shortCode}\x1b[0m\n`);
+    process.stderr.write(`\n🔑 Open this URL to authorize:\n`);
+    process.stderr.write(`${CYAN}${url}${RESET}\n`);
+    process.stderr.write(`Verification code: ${BRIGHT_WHITE}${shortCode}${RESET}\n\n`);
 
     // Best-effort open browser
     try {
-      const { exec } = await import("child_process");
+      const { spawn } = await import("child_process");
       const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      exec(`${cmd} "${url}"`);
+      spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
     } catch {}
 
-    console.log(`Waiting for approval (expires in ${Math.round(expiresIn / 60)}min)...`);
+    process.stderr.write(`Waiting for approval (expires in ${Math.round(expiresIn / 60)}min)...\n`);
     const deadline = Date.now() + expiresIn * 1000;
+    let failures = 0;
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 3000));
       try {
         const poll = await api.pollDeviceLogin(code);
+        failures = 0;
         if (poll.status === "complete" && poll.apiKey) {
           cfg.setDefaultApiKey(poll.apiKey);
-          console.log("\x1b[32m✅ Login successful! API key saved.\x1b[0m");
+          process.stderr.write(`${GREEN}✅ Login successful! API key saved.${RESET}\n`);
           return;
         }
         if (poll.status === "expired") break;
-      } catch {} // transient error — keep polling
+      } catch (e: any) {
+        if (++failures >= 5) {
+          process.stderr.write(`${RED}Poll failed: ${e.message}${RESET}\n`);
+          process.exit(1);
+        }
+      }
     }
-    console.error("\x1b[31mLogin expired or failed.\x1b[0m");
+    process.stderr.write(`${RED}Login expired or failed.${RESET}\n`);
     process.exit(1);
   }
 
