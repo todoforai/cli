@@ -1,0 +1,44 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:   [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  deploy-npm:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        registry-url: 'https://registry.npmjs.org'
+
+    - name: Checkout edge
+      run: git clone --depth 1 https://x-access-token:${{ secrets.GH_PAT }}@github.com/todoforai/edge.git ../edge
+
+    - name: Install dependencies
+      run: bun install
+
+    - name: Build
+      run: bun run build
+
+    - name: Publish to npm
+      run: |
+        node -e "
+          const pkg = require('./package.json');
+          pkg.peerDependencies['@todoforai/edge'] = '>=0.12.0';
+          delete pkg.devDependencies['@todoforai/edge'];
+          delete pkg.scripts.postinstall;
+          require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+        "
+        npm publish --access public --ignore-scripts
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
