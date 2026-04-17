@@ -36,6 +36,7 @@ Options:
   --continue, -c                  Continue most recent todo
   --non-interactive, -n           Run to completion and exit without interactive prompt
   --dangerously-skip-permissions  Auto-approve all blocks (for CI/benchmarks)
+  --allow-all                     Set permissions to allow all tools (no approval needed)
   --no-watch                      Create todo and exit
   --json                          Output as JSON
   --safe                          Validate API key upfront
@@ -65,6 +66,7 @@ export function parseCliArgs() {
       continue: { type: "boolean", short: "c", default: false },
       "non-interactive": { type: "boolean", short: "n", default: false },
       "dangerously-skip-permissions": { type: "boolean", default: false },
+      "allow-all": { type: "boolean", default: false },
       "no-watch": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       safe: { type: "boolean", default: false },

@@ -281,7 +281,11 @@ async function main() {
       const ws = new FrontendWebSocket(apiUrl, apiKey);
       await ws.connect();
       const autoApprove = !!args["dangerously-skip-permissions"];
-      const agent = todo.agentSettings || { id: todo.agentSettingsId };
+      let agent: any = todo.agentSettings || { id: todo.agentSettingsId };
+      if (args["allow-all"]) {
+        const perms = agent.permissions || { allow: [], ask: [], deny: [] };
+        agent = { ...agent, permissions: { ...perms, allow: [...(perms.allow || []), "*:*"] } };
+      }
 
       await watchTodo(ws, todoId, projectId, {
         json: !!args.json, autoApprove, agentSettings: agent,
@@ -289,7 +293,7 @@ async function main() {
 
       if (!args["non-interactive"]) {
         process.stderr.write(`\n${"─".repeat(40)}\n`);
-        await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, autoApprove);
+        await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, autoApprove, cfg);
       }
 
       await ws.close();
@@ -439,6 +443,10 @@ async function main() {
 
   // ── create todo ──
   if (args.model) agent = { ...agent, model: args.model };
+  if (args["allow-all"]) {
+    const perms = agent.permissions || { allow: [], ask: [], deny: [] };
+    agent = { ...agent, permissions: { ...perms, allow: [...(perms.allow || []), "*:*"] } };
+  }
   cfg.addToHistory(content);
   const todo = await api.addMessage(projectId, content, agent);
   const actualTodoId = todo.id || crypto.randomUUID();

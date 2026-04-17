@@ -66,6 +66,7 @@ todoai --resume <todo-id>     # resume specific todo
 --continue, -c                  Continue most recent todo
 --non-interactive, -n           Run to completion and exit
 --dangerously-skip-permissions  Auto-approve all blocks (CI/benchmarks)
+--allow-all                     Set permissions to allow all tools (no approval needed)
 --no-watch                      Create todo and exit
 --json                          Output as JSON
 --safe                          Validate API key upfront
