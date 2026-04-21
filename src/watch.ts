@@ -14,16 +14,17 @@ const diffStoreByWs = new WeakMap<FrontendWebSocket, Map<string, DiffEntry>>();
 
 function classifyBlock(info: any): string {
   const inner = (info.block_type || "").toLowerCase();
-  if (["create", "createfile"].includes(inner)) return "create";
+  if (["create", "createfile", "write"].includes(inner)) return "create";
   if (["modify", "modifyfile", "update", "edit"].includes(inner)) return "edit";
   if (["catfile", "read", "readfile"].includes(inner)) return "read";
+  if (["search", "grep"].includes(inner)) return "search";
   if (inner === "mcp") return "mcp";
   if (["shell", "bash"].includes(inner) || info.cmd) return "shell";
   return "unknown";
 }
 
 function blockDisplay(info: any): [string, string] {
-  const labels: Record<string, string> = { create: "File", edit: "Edit", read: "Read File", mcp: "MCP", shell: "Shell" };
+  const labels: Record<string, string> = { create: "File", edit: "Edit", read: "Read File", search: "Search", mcp: "MCP", shell: "Shell" };
   const kind = classifyBlock(info);
   const typeLabel = labels[kind] || info.block_type || "Tool";
   const skipKeys = new Set([
