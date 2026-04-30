@@ -22,11 +22,13 @@ Usage:
   todoai --resume <todo-id>            # Resume specific todo
   todoai --inspect <todo-id>           # Print full chat log (read-only)
   todoai --template <id> [--input k=v] # Start from a registry template
+  todoai --list-agents                 # List available agents and exit
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
   --project <id>                  Project ID
   --agent, -a <name>              Agent name (partial match)
+  --list-agents                   List available agents (name, id, workspace paths) and exit
   --api-url <url>                 API URL
   --api-key <key>                 API key
   --inspect, -i <todo-id>        Print full chat log (read-only, no interactive)
@@ -57,6 +59,7 @@ export function parseCliArgs() {
       path: { type: "string", default: "." },
       project: { type: "string" },
       agent: { type: "string", short: "a" },
+      "list-agents": { type: "boolean", default: false },
       "api-url": { type: "string" },
       "api-key": { type: "string" },
       inspect: { type: "string", short: "i" },
