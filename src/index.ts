@@ -17,11 +17,13 @@ import { DEFAULT_API_URL, getEnv, printUsage, parseCliArgs } from "./args";
 import { readLine, readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
+import { readCredential, writeCredential } from "./credentials";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
 import { printFullChat } from "./inspect";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
+import { listAgentsCommand } from "./list-agents";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -135,13 +137,19 @@ async function main() {
     return;
   }
   if (args["set-default-api-url"]) { cfg.setDefaultApiUrl(args["set-default-api-url"] as string); console.log(`Default API URL set to: ${args["set-default-api-url"]}`); return; }
-  if (args["set-default-api-key"]) { cfg.setDefaultApiKey(args["set-default-api-key"] as string); console.log("Default API key set"); return; }
+  if (args["set-default-api-key"]) {
+    const key = args["set-default-api-key"] as string;
+    const url = normalizeApiUrl((args["api-url"] as string) || cfg.data.default_api_url || getEnv("API_URL") || DEFAULT_API_URL);
+    writeCredential(url, key);
+    console.log(`Default API key saved for ${url}`);
+    return;
+  }
   if (args["set-defaults"]) {
     // Interactive defaults — simple version
     const url = await readLine(`API URL [${cfg.data.default_api_url || DEFAULT_API_URL}]: `);
     if (url) cfg.setDefaultApiUrl(url);
     const key = await readLine("API Key: ");
-    if (key) cfg.setDefaultApiKey(key);
+    if (key) writeCredential(cfg.data.default_api_url || DEFAULT_API_URL, key);
     console.log("Defaults saved.");
     return;
   }
@@ -181,7 +189,7 @@ async function main() {
         const poll = await loginApi.pollDeviceLogin(code);
         failures = 0;
         if (poll.status === "complete" && poll.apiKey) {
-          cfg.setDefaultApiKey(poll.apiKey);
+          writeCredential(apiUrl, poll.apiKey);
           process.stderr.write(`${GREEN}✅ Login successful! API key saved.${RESET}\n`);
           return poll.apiKey;
         }
@@ -203,14 +211,20 @@ async function main() {
   }
 
   // ── resolve API client ──
-  // Priority: CLI flag > config > env > default
-  let apiKey = (args["api-key"] as string) || cfg.data.default_api_key || getEnv("API_KEY") || "";
+  // Priority: CLI flag > env > shared credentials.json > legacy config.default_api_key
+  let apiKey = (args["api-key"] as string)
+    || getEnv("API_KEY")
+    || readCredential(apiUrl)
+    || cfg.data.default_api_key
+    || "";
 
   if (!apiKey) {
     apiKey = await deviceLogin();
   }
 
   const api = new ApiClient(apiUrl, apiKey);
+
+  if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
 
   // ── inspect mode (read-only, no logo/tips) ──
   if (args.inspect) {
