@@ -17,19 +17,6 @@ function getConfigDir(): string {
   return join(xdg, "todoai-cli");
 }
 
-function obfuscate(s: string): string {
-  return s ? Buffer.from(s, "utf-8").toString("base64") : s;
-}
-
-function deobfuscate(s: string): string {
-  if (!s) return s;
-  try {
-    return Buffer.from(s, "base64").toString("utf-8");
-  } catch {
-    return s;
-  }
-}
-
 export interface ConfigData {
   default_project_id: string | null;
   default_project_name: string | null;
@@ -37,7 +24,6 @@ export interface ConfigData {
   default_agent_settings: any | null;
   default_agent_settings_updated_at: string | null;
   default_api_url: string | null;
-  default_api_key: string | null;
   recent_projects: { id: string; name: string }[];
   recent_agents: string[];
   last_todo_id: string | null;
@@ -52,7 +38,6 @@ function defaultConfig(): ConfigData {
     default_agent_settings: null,
     default_agent_settings_updated_at: null,
     default_api_url: null,
-    default_api_key: null,
     recent_projects: [],
     recent_agents: [],
     last_todo_id: null,
@@ -78,7 +63,7 @@ export class ConfigStore {
     if (!existsSync(this.path)) return defaultConfig();
     try {
       const raw = JSON.parse(readFileSync(this.path, "utf-8"));
-      if (raw.default_api_key) raw.default_api_key = deobfuscate(raw.default_api_key);
+      delete raw.default_api_key; // legacy field — credentials live in ~/.todoforai/credentials.json
       return { ...defaultConfig(), ...raw };
     } catch {
       return defaultConfig();
@@ -88,9 +73,7 @@ export class ConfigStore {
   save(): void {
     try {
       mkdirSync(dirname(this.path), { recursive: true });
-      const out = { ...this.data };
-      if (out.default_api_key) (out as any).default_api_key = obfuscate(out.default_api_key);
-      writeFileSync(this.path, JSON.stringify(out, null, 2), "utf-8");
+      writeFileSync(this.path, JSON.stringify(this.data, null, 2), "utf-8");
     } catch {}
   }
 
@@ -115,11 +98,6 @@ export class ConfigStore {
 
   setDefaultApiUrl(url: string): void {
     this.data.default_api_url = url;
-    this.save();
-  }
-
-  setDefaultApiKey(key: string): void {
-    this.data.default_api_key = key;
     this.save();
   }
 

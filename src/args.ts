@@ -40,13 +40,12 @@ Options:
   --dangerously-skip-permissions  Auto-approve all blocks (for CI/benchmarks)
   --allow-all                     Set permissions to allow all tools (no approval needed)
   --no-watch                      Create todo and exit
+  --no-edge                       Do not auto-spawn edge daemon
   --json                          Output as JSON
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --show-config                   Show config
-  --set-defaults                  Interactive defaults setup
   --set-default-api-url           Set default API URL
-  --set-default-api-key           Set default API key
   --reset-config                  Reset config file
   --help, -h                      Show this help
 `);
@@ -71,13 +70,12 @@ export function parseCliArgs() {
       "dangerously-skip-permissions": { type: "boolean", default: false },
       "allow-all": { type: "boolean", default: false },
       "no-watch": { type: "boolean", default: false },
+      "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       safe: { type: "boolean", default: false },
       debug: { type: "boolean", short: "d", default: false },
       "show-config": { type: "boolean", default: false },
-      "set-defaults": { type: "boolean", default: false },
       "set-default-api-url": { type: "string" },
-      "set-default-api-key": { type: "string" },
       "reset-config": { type: "boolean", default: false },
       "config-path": { type: "string" },
       help: { type: "boolean", short: "h", default: false },

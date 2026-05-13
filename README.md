@@ -10,10 +10,26 @@ bun install -g @todoforai/cli
 
 ## Setup
 
+Just run `todoai` — on first use it opens a browser for **device login** and saves the API key to `~/.todoforai/credentials.json` (shared with the edge daemon).
+
+```bash
+todoai                # prompts device login if no key found
+todoai login          # explicit login
+```
+
+Optional manual config:
+
 ```bash
 todoai --set-default-api-url http://localhost:4000   # or https://api.todofor.ai
-todoai --set-default-api-key <your-api-key>
 ```
+
+Auth resolution order: `--api-key` flag → `TODOFORAI_API_KEY` env → shared credentials (`~/.todoforai/credentials.json`) → device login.
+
+## Edge daemon
+
+The CLI talks to the backend over WebSocket; **shell execution, file I/O, and tool calls happen in the edge daemon** running locally. On every run `todoai` spawns a detached edge process if none is running (PID-locked at `~/.todoforai/edge-<hash>.lock`, logs at `~/.todoforai/edge.log`). It keeps running after the CLI exits, so long-running tasks survive `Ctrl+D`.
+
+Disable with `--no-edge` if you manage the edge yourself (e.g. systemd, separate terminal).
 
 ## Usage
 
@@ -68,13 +84,12 @@ todoai --resume <todo-id>     # resume specific todo
 --dangerously-skip-permissions  Auto-approve all blocks (CI/benchmarks)
 --allow-all                     Set permissions to allow all tools (no approval needed)
 --no-watch                      Create todo and exit
+--no-edge                       Do not auto-spawn edge daemon
 --json                          Output as JSON
 --safe                          Validate API key upfront
 --debug, -d                     Debug output
 --show-config                   Show config
---set-defaults                  Interactive defaults setup
 --set-default-api-url           Set default API URL
---set-default-api-key           Set default API key
 --reset-config                  Reset config file
 --help, -h                      Show this help
 ```
