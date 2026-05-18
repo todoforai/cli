@@ -231,7 +231,7 @@ async function main() {
 
   // ── template mode ──
   if (args.template) {
-    if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
+    if (!args["no-edge"] && !args["no-watch"]) ensureEdgeRunning(apiUrl, apiKey);
     const templateId = args.template as string;
     const inputValues: Record<string, string> = {};
     for (const kv of (args.input as string[] || [])) {
@@ -390,7 +390,7 @@ async function main() {
   process.stderr.write(`${DIM}Tip: ${randomTip()}${RESET}\n`);
 
   // From here on we're creating + watching a new todo, which needs the edge.
-  if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
+  if (!args["no-edge"] && !args["no-watch"]) ensureEdgeRunning(apiUrl, apiKey);
 
   // ── read content ──
   let content: string;
