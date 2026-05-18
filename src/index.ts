@@ -124,6 +124,13 @@ async function main() {
   if (args.version) { console.log(VERSION); process.exit(0); }
   if (args.help) { printUsage(); process.exit(0); }
 
+  // ensureEdgeRunning is intentionally NOT called here — it's invoked
+  // per-branch below, only on paths that actually need the bridge daemon
+  // (template / resume / create-todo). Read-only paths (--list-agents,
+  // --inspect, --show-config, login, etc.) must not spawn it, otherwise
+  // tool-catalog probes like `todoai --version` from the bridge end up
+  // forking yet another bridge — feedback loop.
+
   const cfg = new ConfigStore(args["config-path"] as string);
 
   // ── config commands ──
@@ -209,8 +216,6 @@ async function main() {
 
   const api = new ApiClient(apiUrl, apiKey);
 
-  if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
-
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
 
   // ── inspect mode (read-only, no logo/tips) ──
@@ -226,6 +231,7 @@ async function main() {
 
   // ── template mode ──
   if (args.template) {
+    if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
     const templateId = args.template as string;
     const inputValues: Record<string, string> = {};
     for (const kv of (args.input as string[] || [])) {
@@ -311,6 +317,7 @@ async function main() {
 
   // ── resume mode ──
   if (args.resume || args.continue) {
+    if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
     const todoId = (args.resume as string) || cfg.data.last_todo_id;
     if (!todoId) { process.stderr.write("Error: No recent todo found\n"); process.exit(1); }
 
@@ -381,6 +388,9 @@ async function main() {
     );
   }
   process.stderr.write(`${DIM}Tip: ${randomTip()}${RESET}\n`);
+
+  // From here on we're creating + watching a new todo, which needs the edge.
+  if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
 
   // ── read content ──
   let content: string;
