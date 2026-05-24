@@ -4,11 +4,19 @@
  * Usage: todoai "prompt text" | echo "content" | todoai [options]
  */
 
-import { realpathSync } from "fs";
+import { realpathSync, readFileSync } from "fs";
 import { resolve } from "path";
+import { fileURLToPath } from "url";
 import { homedir } from "os";
+import path from "path";
 
+import { checkForUpdates } from "./update-notifier";
 import { randomTip } from "./tips";
+
+try {
+  const pkgPath = path.resolve(fileURLToPath(import.meta.url), "../../package.json");
+  checkForUpdates(JSON.parse(readFileSync(pkgPath, "utf-8")));
+} catch {}
 import { ApiClient, type RegistryTemplate, type RegistryTemplateInput } from "@todoforai/edge/src/api";
 import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
 import { normalizeApiUrl } from "@todoforai/edge/src/config";
@@ -157,9 +165,10 @@ async function main() {
     const { code, url, expiresIn } = await loginApi.initDeviceLogin("cli");
 
     const userCode = new URL(url).searchParams.get("user_code") || code.slice(-8).toUpperCase();
+    const formattedCode = userCode.length === 8 ? `${userCode.slice(0, 4)}-${userCode.slice(4)}` : userCode;
     process.stderr.write(`\n🔑 Open this URL to authorize:\n`);
     process.stderr.write(`${CYAN}${url}${RESET}\n`);
-    process.stderr.write(`Verification code: ${BRIGHT_WHITE}${userCode}${RESET}\n\n`);
+    process.stderr.write(`Verification code: ${BRIGHT_WHITE}${formattedCode}${RESET}\n\n`);
 
     // Best-effort open browser
     try {
