@@ -212,8 +212,12 @@ async function main() {
   }
 
   // ── resolve API client ──
-  // Priority: CLI flag > env > shared credentials.json (device-login)
+  // Priority: CLI flag > short-lived edge token (TODOFORAI_API_TOKEN) > long-lived
+  // env key > shared credentials.json > device-login. The edge shell injects
+  // TODOFORAI_API_TOKEN matching the backend it's connected to, so binaries
+  // spawned from a todo shell auth automatically without device-login prompts.
   let apiKey = (args["api-key"] as string)
+    || getEnv("API_TOKEN")
     || getEnv("API_KEY")
     || readCredential(apiUrl)
     || "";
