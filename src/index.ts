@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { homedir } from "os";
 import path from "path";
 
-import { checkForUpdates } from "./update-notifier";
+import { checkForUpdates } from "@todoforai/update-notifier";
 import { randomTip } from "./tips";
 
 try {
