@@ -22,7 +22,8 @@ Usage:
   todoai --path /my/project "Fix bug"  # Explicit workspace path
   todoai -c                            # Resume last todo
   todoai --resume <todo-id>            # Resume specific todo
-  todoai --inspect <todo-id>           # Print full chat log (read-only)
+  todoai --inspect <todo-id>[:<msg-id>]  # Print full chat log (read-only); :<msg-id> truncates inclusive
+  todoai --inspect :<msg-id>             # Same, using $TODOFORAI_TODO_ID from edge env
   todoai --template <id> [--input k=v] # Start from a registry template
   todoai --list-agents                 # List available agents and exit
 
@@ -33,7 +34,7 @@ Options:
   --list-agents                   List available agents (name, id, workspace paths) and exit
   --api-url <url>                 API URL
   --api-key <key>                 API key
-  --inspect, -i <todo-id>        Print full chat log (read-only, no interactive)
+  --inspect, -i [<todo-id>][:<msg-id>]  Print full chat log; empty todo-id uses $TODOFORAI_TODO_ID
   --template, -t <id>            Start from a registry template
   --input <key=value>            Template input (repeatable)
   --resume, -r [todo-id]          Resume existing todo

@@ -227,10 +227,17 @@ async function main() {
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
 
   // ── inspect mode (read-only, no logo/tips) ──
-  if (args.inspect) {
-    const todoId = args.inspect as string;
+  // Syntax: --inspect [<todoId>][:<msgId>] — empty todoId falls back to $TODOFORAI_TODO_ID
+  if (args.inspect !== undefined) {
+    const raw = String(args.inspect);
+    const [rawTodoId, untilMessageId] = raw.includes(":") ? raw.split(":", 2) : [raw, undefined];
+    const todoId = rawTodoId || getEnv("TODO_ID");
+    if (!todoId) {
+      process.stderr.write(`${RED}Error: --inspect requires a todoId (or $TODOFORAI_TODO_ID env var)${RESET}\n`);
+      process.exit(2);
+    }
     const todo = await api.getTodo(todoId);
-    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId));
+    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), untilMessageId || undefined);
     return;
   }
 

@@ -2,7 +2,7 @@
 
 import { CYAN, DIM, GREEN, YELLOW, RED, BOLD, RESET } from "./colors";
 
-export function printFullChat(todo: any, frontendUrl: string) {
+export function printFullChat(todo: any, frontendUrl: string, untilMessageId?: string) {
   const statusColors: Record<string, string> = {
     DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
     ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED,
@@ -15,9 +15,18 @@ export function printFullChat(todo: any, frontendUrl: string) {
   process.stderr.write(`${DIM}URL:${RESET}    ${CYAN}${frontendUrl}${RESET}\n`);
   process.stderr.write(`${DIM}Created:${RESET} ${new Date(todo.createdAt).toLocaleString()}\n`);
   if (todo.agentSettingsId) process.stderr.write(`${DIM}Agent:${RESET}  ${todo.agentSettingsId}\n`);
+  if (untilMessageId) process.stderr.write(`${DIM}Until:${RESET}  ${untilMessageId}\n`);
   process.stderr.write("─".repeat(60) + "\n");
 
-  const messages = todo.messages || [];
+  let messages = todo.messages || [];
+  if (untilMessageId) {
+    const idx = messages.findIndex((m: any) => m.id === untilMessageId);
+    if (idx < 0) {
+      process.stderr.write(`${RED}Error: message ${untilMessageId} not found in todo${RESET}\n`);
+      process.exit(2);
+    }
+    messages = messages.slice(0, idx + 1);
+  }
   if (!messages.length) {
     process.stderr.write(`${DIM}(no messages)${RESET}\n`);
     return;
