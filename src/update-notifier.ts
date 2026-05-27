@@ -1,11 +1,20 @@
 // Zero-dep update notifier. Cache file shared across todoforai CLIs under
 // ~/.config/todoforai/. Sync cost <5ms; registry fetch is not awaited but
 // may briefly keep the event loop alive (max 3s via AbortSignal.timeout).
-// Silent on CI / non-TTY / NO_UPDATE_NOTIFIER.
+// Silent on CI / non-TTY / NO_UPDATE_NOTIFIER / linked dev installs.
 
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+
+// True when the running script resolves outside any node_modules dir,
+// i.e. `bun link` / `npm link` to a source checkout. Skip the notifier
+// there — repo package.json intentionally lags (CI bumps version in-flight).
+function isLinkedInstall(): boolean {
+  try {
+    return !fs.realpathSync(process.argv[1] || "").includes(`${path.sep}node_modules${path.sep}`);
+  } catch { return false; }
+}
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 const CACHE_DIR = path.join(os.homedir(), ".config", "todoforai");
@@ -23,7 +32,7 @@ function cmpVer(a: string, b: string): number {
 }
 
 export function checkForUpdates(pkg: { name: string; version: string }): void {
-  if (!process.stderr.isTTY || process.env.CI || process.env.NO_UPDATE_NOTIFIER) return;
+  if (!process.stderr.isTTY || process.env.CI || process.env.NO_UPDATE_NOTIFIER || isLinkedInstall()) return;
 
   const cacheFile = path.join(CACHE_DIR, `notifier-${encodeURIComponent(pkg.name)}.json`);
   let cache: { ts?: number; latest?: string } = {};
