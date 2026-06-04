@@ -2,7 +2,22 @@
 
 import { CYAN, DIM, GREEN, YELLOW, RED, BOLD, RESET } from "./colors";
 
-export function printFullChat(todo: any, frontendUrl: string, untilMessageId?: string) {
+/** Python-style slice on an array length. Accepts `N`, `N:`, `:N`, `N:M` with negatives. */
+export function applySlice<T>(arr: T[], spec: string): T[] {
+  if (!spec.includes(":")) {
+    const i = Number(spec);
+    if (!Number.isInteger(i)) throw new Error(`Bad slice: '${spec}'`);
+    const r = arr.at(i);
+    return r === undefined ? [] : [r];
+  }
+  const [a, b] = spec.split(":", 2);
+  const start = a === "" ? 0 : Number(a);
+  const end = b === "" ? arr.length : Number(b);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) throw new Error(`Bad slice: '${spec}'`);
+  return arr.slice(start, end);
+}
+
+export function printFullChat(todo: any, frontendUrl: string, slice?: string) {
   const statusColors: Record<string, string> = {
     DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
     ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED,
@@ -15,17 +30,13 @@ export function printFullChat(todo: any, frontendUrl: string, untilMessageId?: s
   process.stderr.write(`${DIM}URL:${RESET}    ${CYAN}${frontendUrl}${RESET}\n`);
   process.stderr.write(`${DIM}Created:${RESET} ${new Date(todo.createdAt).toLocaleString()}\n`);
   if (todo.agentSettingsId) process.stderr.write(`${DIM}Agent:${RESET}  ${todo.agentSettingsId}\n`);
-  if (untilMessageId) process.stderr.write(`${DIM}Until:${RESET}  ${untilMessageId}\n`);
+  if (slice) process.stderr.write(`${DIM}Slice:${RESET}  [${slice}]\n`);
   process.stderr.write("─".repeat(60) + "\n");
 
   let messages = todo.messages || [];
-  if (untilMessageId) {
-    const idx = messages.findIndex((m: any) => m.id === untilMessageId);
-    if (idx < 0) {
-      process.stderr.write(`${RED}Error: message ${untilMessageId} not found in todo${RESET}\n`);
-      process.exit(2);
-    }
-    messages = messages.slice(0, idx + 1);
+  if (slice) {
+    try { messages = applySlice(messages, slice); }
+    catch (e: any) { process.stderr.write(`${RED}${e.message}${RESET}\n`); process.exit(2); }
   }
   if (!messages.length) {
     process.stderr.write(`${DIM}(no messages)${RESET}\n`);

@@ -273,17 +273,19 @@ async function main() {
   }
 
   // ── inspect mode (read-only, no logo/tips) ──
-  // Syntax: --inspect [<todoId>][:<msgId>] — empty todoId falls back to $TODOFORAI_TODO_ID
+  // Syntax: --inspect [<todoId>][<slice>]
+  //   <slice> = Python-style on messages, e.g. [:1], [-3:], [5:10], [7]
+  //   Empty <todoId> falls back to $TODOFORAI_TODO_ID
   if (args.inspect !== undefined) {
     const raw = String(args.inspect);
-    const [rawTodoId, untilMessageId] = raw.includes(":") ? raw.split(":", 2) : [raw, undefined];
-    const todoId = rawTodoId || getEnv("TODO_ID");
+    const m = raw.match(/^([^[]*)(?:\[([^\]]+)\])?$/);
+    const todoId = (m?.[1] || "") || getEnv("TODO_ID");
     if (!todoId) {
       process.stderr.write(`${RED}Error: --inspect requires a todoId (or $TODOFORAI_TODO_ID env var)${RESET}\n`);
       process.exit(2);
     }
     const todo = await api.getTodo(todoId);
-    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), untilMessageId || undefined);
+    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), m?.[2]);
     return;
   }
 
