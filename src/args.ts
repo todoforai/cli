@@ -23,7 +23,7 @@ Usage:
   todoai --path /my/project "Fix bug"  # Explicit workspace path
   todoai -c                            # Resume last todo
   todoai --resume <todo-id>            # Resume specific todo
-  todoai --inspect <todo-id>[<slice>]  # Read chat log. <slice> = '[-3:]', '[:1]', '[5:10]', '[7]'
+  todoai --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
   todoai --template <id> [--input k=v] # Start from a registry template
   todoai --list-agents                 # List available agents and exit
   todoai list [-n 30] [--all] [--status S]   # List todos (open + recent first); see 'list --help'
@@ -38,7 +38,7 @@ Options:
   --list-agents                   List available agents (name, id, workspace paths) and exit
   --api-url <url>                 API URL
   --api-key <key>                 API key
-  --inspect, -i [<todo-id>][<slice>]    Print chat log; empty todo-id uses $TODOFORAI_TODO_ID
+  --inspect, -i [<todo-id>][@<slice>]   Print chat log; empty todo-id uses $TODOFORAI_TODO_ID
   --template, -t <id>            Start from a registry template
   --input <key=value>            Template input (repeatable)
   --resume, -r [todo-id]          Resume existing todo
