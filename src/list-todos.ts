@@ -31,7 +31,7 @@ Usage:
 Flags:
   -n, --limit <n>          Max rows to show (default: 30)
   -s, --status <S[,S2]>    Filter by status (comma-separated). Implies --all.
-  -A, --all                Include closed (DONE, CANCELLED, ARCHIVED, …)
+  -A, --all                Include DONE (also CANCELLED, ARCHIVED, …)
       --project <id>       Project ID (default: current default project)
       --json               Output raw JSON
   -h, --help               Show this help
@@ -39,7 +39,7 @@ Flags:
 Examples:
   todoai list                       # 30 most recent open todos
   todoai list -n 50                 # last 50 open
-  todoai list --all                 # include closed
+  todoai list --all                 # include DONE
   todoai list -s RUNNING,REVIEW_REQUESTED
   todoai list --json | jq '.[].id'
 `);
