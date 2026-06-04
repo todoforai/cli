@@ -28,7 +28,7 @@ import { ConfigStore } from "./config";
 import { readCredential, writeCredential } from "./credentials";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
-import { printFullChat, applySlice, toAnthropicShape, type InspectMode } from "./inspect";
+import { printFullChat, applySlice, toAnthropicShape, type InspectMode, type InspectFormat } from "./inspect";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
@@ -292,11 +292,13 @@ async function main() {
         catch (e: any) { process.stderr.write(`${RED}${e.message}${RESET}\n`); process.exit(2); }
       }
       const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
-      process.stdout.write(JSON.stringify(toAnthropicShape(messages, mode), null, 2) + "\n");
+      const format: InspectFormat = args["format-anthropic"] ? "anthropic" : "compact";
+      process.stdout.write(JSON.stringify(toAnthropicShape(messages, mode, format), null, 2) + "\n");
       return;
     }
     const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
-    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), slice, mode);
+    const format: InspectFormat = args["format-anthropic"] ? "anthropic" : "compact";
+    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), slice, mode, format);
     return;
   }
 

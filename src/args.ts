@@ -50,6 +50,7 @@ Options:
   --no-edge                       Do not auto-spawn edge daemon
   --json                          Output as JSON
   --detailed                      'inspect --json': keep internal/UI fields (userId, deviceId, runMode, …)
+  --format-anthropic              'inspect --json': spec-compliant Anthropic shape (tool_result in next user msg)
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --show-config                   Show config
@@ -104,6 +105,7 @@ export function parseCliArgs() {
       "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       detailed: { type: "boolean", default: false },
+      "format-anthropic": { type: "boolean", default: false },
       safe: { type: "boolean", default: false },
       debug: { type: "boolean", short: "d", default: false },
       "show-config": { type: "boolean", default: false },

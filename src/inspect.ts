@@ -3,6 +3,11 @@
 import { CYAN, DIM, GREEN, YELLOW, RED, BOLD, RESET } from "./colors";
 
 export type InspectMode = "default" | "detailed" | "debug";
+export type InspectFormat = "compact" | "anthropic";
+
+/** Escape value for an XML-tag-style attribute. We use JSON.stringify so
+ *  newlines, quotes, etc. are stable and re-parseable. */
+const xmlAttr = (v: any) => JSON.stringify(String(v));
 
 /** Drop noise from inspect --json output by mode.
  *  default: chat-shape only — assistant text/tool calls/results, user content.
@@ -15,14 +20,13 @@ const ALWAYS_DROP = new Set(["messageIds", "data"]);
 const DETAILED_ONLY = new Set([
   "id", "createdAt", "lastActivityAt", "modifiedAt",
   "agentSettingsId", "scheduledTimestamp", "workflowVersion",
-  "todoId", "blockId", "parentBlockId", "messageIds",
+  "todoId", "blockId", "parentBlockId",
   "stop_sequence", "permissions", "isPublic", "metadata",
 ]);
 // Kept only in --debug.
 const DEBUG_ONLY = new Set([
   "runMeta", "generationCompleted",
-  "userId", "deviceId", "runMode", "long",
-  "timeout",
+  "userId", "deviceId", "runMode",
 ]);
 const isEmpty = (x: any) =>
   (Array.isArray(x) && x.length === 0) ||
@@ -46,39 +50,67 @@ export function pruneEmpty(v: any, mode: InspectMode = "default"): any {
   return v;
 }
 
-/** Map a backend block to one or two Anthropic-style content items.
- *  - text/reason → single `text`/`thinking` item.
- *  - tool blocks (bash/read/list/explore/...) → `tool_use` + adjacent `tool_result`.
+/** Map a backend block to one or two content items.
+ *  - text/reason → `text`/`thinking` item.
+ *  - tool blocks → `tool_use` (+ adjacent `tool_result` if there are results).
+ *
+ *  Format:
+ *    compact:   tool_use.content = '<bash cmd="..."/>',
+ *               tool_result.content = '<attachment uri="..."/>' string.
+ *    anthropic: tool_use.{id,name,input} + tool_result.{tool_use_id,content:blocks[]}
+ *               per the Anthropic API spec. (Caller is responsible for moving
+ *               tool_result into the next user message.)
  */
-function blockToAnthropic(block: any, mode: InspectMode): any[] {
+function blockToAnthropic(block: any, mode: InspectMode, format: InspectFormat): any[] {
   const t = block.type;
   if (t === "text") return [{ type: "text", text: block.content ?? "" }];
   if (t === "reason") return [{ type: "thinking", thinking: block.content ?? "" }];
 
-  // tool_use: name = block type, input = the type-specific fields we know about.
-  const input: any = {};
-  for (const k of ["cmd", "path", "prompt", "long"]) if (block[k] !== undefined) input[k] = block[k];
-  const use: any = { type: "tool_use", name: t, input };
-  if (mode !== "default") use.id = block.id;
+  // Build the tool_use.
+  const inputFields: [string, any][] = [];
+  for (const k of ["cmd", "path", "prompt", "long", "timeout"]) {
+    if (block[k] !== undefined && block[k] !== null && block[k] !== "") inputFields.push([k, block[k]]);
+  }
+  const use: any = format === "anthropic"
+    ? { type: "tool_use", id: block.id, name: t, input: Object.fromEntries(inputFields) }
+    : { type: "tool_use", content: `<${t}${inputFields.map(([k, v]) => ` ${k}=${xmlAttr(v)}`).join("")}/>` };
+  if (format === "compact" && mode !== "default") use.id = block.id;
 
-  // tool_result: keep the backend's native <attachment .../> string — that's literally
-  // what the LLM sees in context. Auto-generated names (bash:..., read:..., etc.) get
-  // stripped to just URI + size.
+  // Build the tool_result, if any.
   const items: any[] = [use];
   if (block.results?.length) {
-    const parts: string[] = [];
-    for (const r of block.results) {
-      for (const att of r.attachments ?? []) {
-        const isAutoName = /^(bash|read|list|explore|edit|write|grep):/.test(att.originalName ?? "");
-        const nameAttr = att.originalName && !isAutoName ? ` name="${att.originalName}"` : "";
-        parts.push(`<attachment uri="${att.uri}"${nameAttr} size=${att.fileSize}/>`);
+    if (format === "anthropic") {
+      const content = block.results.flatMap((r: any) => {
+        const parts: any[] = [];
+        for (const att of r.attachments ?? []) {
+          const isImage = (att.mimeType || "").startsWith("image/");
+          const isAutoName = /^(bash|read|list|explore|edit|write|grep):/.test(att.originalName ?? "");
+          const source: any = { type: "uri", uri: att.uri, mimeType: att.mimeType, size: att.fileSize };
+          if (att.originalName && !isAutoName) source.name = att.originalName;
+          parts.push({ type: isImage ? "image" : "document", source });
+        }
+        if (typeof r.content === "string" && r.content) parts.push({ type: "text", text: r.content });
+        return parts;
+      });
+      const result: any = { type: "tool_result", tool_use_id: block.id };
+      if (content.length) result.content = content;
+      if (block.status && block.status !== "COMPLETED") result.is_error = true;
+      items.push(result);
+    } else {
+      const parts: string[] = [];
+      for (const r of block.results) {
+        for (const att of r.attachments ?? []) {
+          const isAutoName = /^(bash|read|list|explore|edit|write|grep):/.test(att.originalName ?? "");
+          const nameAttr = att.originalName && !isAutoName ? ` name=${xmlAttr(att.originalName)}` : "";
+          parts.push(`<attachment uri=${xmlAttr(att.uri)}${nameAttr} size=${att.fileSize}/>`);
+        }
+        if (typeof r.content === "string" && r.content) parts.push(r.content);
       }
-      if (typeof r.content === "string" && r.content) parts.push(r.content);
+      const result: any = { type: "tool_result", content: parts.join("\n") };
+      if (mode !== "default") result.tool_use_id = block.id;
+      if (block.status && block.status !== "COMPLETED") result.status = block.status;
+      items.push(result);
     }
-    const result: any = { type: "tool_result", content: parts.join("\n") };
-    if (mode !== "default") result.tool_use_id = block.id;
-    if (block.status && block.status !== "COMPLETED") result.status = block.status;
-    items.push(result);
   }
   return items;
 }
@@ -87,7 +119,11 @@ function blockToAnthropic(block: any, mode: InspectMode): any[] {
  *  Tool calls and their results stay inside the same assistant message, in chronological order.
  *  Backend auto-appends tool-output attachments to the next user message; we drop those here
  *  to avoid showing them twice (in the tool_result AND on the user). */
-export function toAnthropicShape(messages: any[], mode: InspectMode = "default"): any[] {
+export function toAnthropicShape(
+  messages: any[],
+  mode: InspectMode = "default",
+  format: InspectFormat = "compact",
+): any[] {
   const out: any[] = [];
   let prevToolAttachmentIds = new Set<string>();
   for (const m of messages) {
@@ -135,10 +171,23 @@ export function toAnthropicShape(messages: any[], mode: InspectMode = "default")
         for (const a of r.attachments ?? []) if (a.id) prevToolAttachmentIds.add(a.id);
       }
     }
-    for (const b of m.blocks ?? []) content.push(...blockToAnthropic(b, mode));
-    msg.content = content;
-    if (mode === "debug" && m.runMeta?.length) msg.runMeta = m.runMeta;
-    out.push(pruneEmpty(msg, mode));
+    for (const b of m.blocks ?? []) content.push(...blockToAnthropic(b, mode, format));
+
+    if (format === "anthropic") {
+      // Split: tool_use stays on assistant, tool_result moves to a synthetic next user message.
+      const useItems = content.filter((c: any) => c.type !== "tool_result");
+      const resultItems = content.filter((c: any) => c.type === "tool_result");
+      msg.content = useItems;
+      if (mode === "debug" && m.runMeta?.length) msg.runMeta = m.runMeta;
+      out.push(pruneEmpty(msg, mode));
+      if (resultItems.length) {
+        out.push(pruneEmpty({ role: "user", content: resultItems }, mode));
+      }
+    } else {
+      msg.content = content;
+      if (mode === "debug" && m.runMeta?.length) msg.runMeta = m.runMeta;
+      out.push(pruneEmpty(msg, mode));
+    }
   }
   return out;
 }
@@ -161,7 +210,7 @@ export function applySlice<T>(arr: T[], spec: string): T[] {
 const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n) + `\n${DIM}... (${s.length} chars)${RESET}` : s;
 const indent = (s: string, pre: string) => s.split("\n").join(`\n${pre}`);
 
-export function printFullChat(todo: any, frontendUrl: string, slice?: string, mode: InspectMode = "default") {
+export function printFullChat(todo: any, frontendUrl: string, slice?: string, mode: InspectMode = "default", format: InspectFormat = "compact") {
   const statusColors: Record<string, string> = {
     DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
     ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED,
@@ -188,7 +237,7 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
   }
 
   // Render from the canonical Anthropic shape (single source of truth shared with --json).
-  const shaped = toAnthropicShape(messages, mode);
+  const shaped = toAnthropicShape(messages, mode, format);
   let toolUseCount = 0, errorCount = 0;
 
   for (let i = 0; i < shaped.length; i++) {
@@ -209,13 +258,31 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
         if (it.thinking) process.stderr.write(`${DIM}[thinking]${RESET} ${trunc(it.thinking, 500)}\n`);
       } else if (it.type === "tool_use") {
         toolUseCount++;
-        const argStr = Object.entries(it.input || {}).map(([k, v]) => `${DIM}${k}=${RESET}${String(v).split("\n")[0].slice(0, 80)}`).join(" ");
-        process.stderr.write(`  ${YELLOW}[${it.name}]${RESET} ${argStr}\n`);
+        if (it.content) {
+          // compact format: '<name attr="..."/>' — show as-is, just truncated.
+          process.stderr.write(`  ${YELLOW}${trunc(it.content, 200)}${RESET}\n`);
+        } else {
+          // anthropic format: structured name+input.
+          const argStr = Object.entries(it.input || {}).map(([k, v]) => `${DIM}${k}=${RESET}${String(v).split("\n")[0].slice(0, 80)}`).join(" ");
+          process.stderr.write(`  ${YELLOW}[${it.name}]${RESET} ${argStr}\n`);
+        }
       } else if (it.type === "tool_result") {
         const status = it.status && it.status !== "COMPLETED" ? ` ${RED}${it.status}${RESET}` : "";
         if (status) errorCount++;
-        const body = trunc(typeof it.content === "string" ? it.content : "", 500);
-        process.stderr.write(`  ${DIM}└─ result:${RESET}${status} ${indent(body, `     ${DIM}│${RESET} `)}\n`);
+        let bodyStr: string;
+        if (typeof it.content === "string") bodyStr = it.content;
+        else {
+          // anthropic format: render each content block compactly.
+          bodyStr = (it.content || []).map((c: any) => {
+            if (c.type === "text") return c.text ?? "";
+            if (c.type === "image" || c.type === "document") {
+              const s = c.source ?? {};
+              return `[${c.type}] ${s.mimeType ?? ""}${s.name ? " "+s.name : ""} (${s.size ?? "?"} B) ${s.uri ?? ""}`;
+            }
+            return "";
+          }).join("\n");
+        }
+        process.stderr.write(`  ${DIM}└─ result:${RESET}${status} ${indent(trunc(bodyStr, 500), `     ${DIM}│${RESET} `)}\n`);
       }
     }
   }
