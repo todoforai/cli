@@ -61,15 +61,31 @@ export function pruneEmpty(v: any, mode: InspectMode = "default"): any {
  *               per the Anthropic API spec. (Caller is responsible for moving
  *               tool_result into the next user message.)
  */
+// Backend block keys that are *not* part of a tool's logical input — drop these when
+// constructing tool_use.input so every real input field (cmd/path/prompt/pattern/changes/…)
+// comes through automatically.
+const BLOCK_META_KEYS = new Set([
+  "type", "id", "parentBlockId", "toolCallId",
+  "status", "results", "content", "modifiedContent", "originalContent",
+  "error_message", "stacktrace",
+  "runMeta", "runMode", "generationCompleted", "userId", "deviceId",
+]);
+
 function blockToAnthropic(block: any, mode: InspectMode, format: InspectFormat): any[] {
   const t = block.type;
   if (t === "text") return [{ type: "text", text: block.content ?? "" }];
   if (t === "reason") return [{ type: "thinking", thinking: block.content ?? "" }];
+  if (t === "error") {
+    const msg = block.error_message || block.content || "(unknown error)";
+    return [{ type: "text", text: `[error] ${msg}` }];
+  }
 
-  // Build the tool_use.
+  // Build the tool_use. Take every backend field that isn't pure metadata.
   const inputFields: [string, any][] = [];
-  for (const k of ["cmd", "path", "prompt", "long", "timeout"]) {
-    if (block[k] !== undefined && block[k] !== null && block[k] !== "") inputFields.push([k, block[k]]);
+  for (const [k, v] of Object.entries(block)) {
+    if (BLOCK_META_KEYS.has(k)) continue;
+    if (v === undefined || v === null || v === "") continue;
+    inputFields.push([k, v]);
   }
   const use: any = format === "anthropic"
     ? { type: "tool_use", id: block.id, name: t, input: Object.fromEntries(inputFields) }
@@ -200,10 +216,12 @@ export function applySlice<T>(arr: T[], spec: string): T[] {
     const r = arr.at(i);
     return r === undefined ? [] : [r];
   }
-  const [a, b] = spec.split(":", 2);
+  const parts = spec.split(":");
+  if (parts.length !== 2) throw new Error(`Bad slice: '${spec}' (use N, N:, :N, or N:M)`);
+  const [a, b] = parts;
   const start = a === "" ? 0 : Number(a);
   const end = b === "" ? arr.length : Number(b);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) throw new Error(`Bad slice: '${spec}'`);
+  if (!Number.isInteger(start) || !Number.isInteger(end)) throw new Error(`Bad slice: '${spec}'`);
   return arr.slice(start, end);
 }
 
@@ -267,8 +285,9 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
           process.stderr.write(`  ${YELLOW}[${it.name}]${RESET} ${argStr}\n`);
         }
       } else if (it.type === "tool_result") {
-        const status = it.status && it.status !== "COMPLETED" ? ` ${RED}${it.status}${RESET}` : "";
-        if (status) errorCount++;
+        const errLabel = it.is_error ? ` ${RED}ERROR${RESET}` : it.status && it.status !== "COMPLETED" ? ` ${RED}${it.status}${RESET}` : "";
+        if (errLabel) errorCount++;
+        const status = errLabel;
         let bodyStr: string;
         if (typeof it.content === "string") bodyStr = it.content;
         else {

@@ -49,8 +49,8 @@ Options:
   --no-watch                      Create todo and exit
   --no-edge                       Do not auto-spawn edge daemon
   --json                          Output as JSON
-  --detailed                      'inspect --json': keep internal/UI fields (userId, deviceId, runMode, …)
-  --format-anthropic              'inspect --json': spec-compliant Anthropic shape (tool_result in next user msg)
+  --detailed                      'inspect --json': keep ids, timestamps, agentSettingsId, scheduledTimestamp
+  --format-anthropic              'inspect --json': Anthropic-style shape (tool_result in next user msg); attachment sources are uri-typed, so not a 1:1 messages.create input
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --show-config                   Show config
