@@ -10,7 +10,7 @@ export type InspectMode = "default" | "detailed" | "debug";
  *  debug:   + runMeta (cost/tokens), generationCompleted, userId, deviceId, runMode.
  */
 const DROP_IF_EMPTY = new Set(["runMeta", "meta", "attachments", "blocks"]);
-const ALWAYS_DROP = new Set(["messageIds"]);
+const ALWAYS_DROP = new Set(["messageIds", "data"]);
 // Kept only in --detailed and --debug (not in default).
 const DETAILED_ONLY = new Set([
   "id", "createdAt", "lastActivityAt", "modifiedAt",
@@ -93,7 +93,21 @@ export function toAnthropicShape(messages: any[], mode: InspectMode = "default")
       if (m.createdAt) out.createdAt = m.createdAt;
     }
     if (m.role === "user") {
-      out.content = m.content ?? "";
+      const atts = (m.attachments ?? []).map((a: any) => {
+        const isImage = (a.mimeType || "").startsWith("image/");
+        return {
+          type: isImage ? "image" : "document",
+          source: { type: "uri", uri: a.uri, name: a.originalName, mimeType: a.mimeType, size: a.fileSize },
+        };
+      });
+      if (atts.length === 0) {
+        out.content = m.content ?? "";
+      } else {
+        out.content = [
+          ...(m.content ? [{ type: "text", text: m.content }] : []),
+          ...atts,
+        ];
+      }
       return pruneEmpty(out, mode);
     }
     // assistant: flatten blocks into content[].
@@ -165,6 +179,9 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
     for (const it of items) {
       if (it.type === "text") {
         if (it.text) process.stdout.write(trunc(it.text, 2000) + "\n");
+      } else if (it.type === "image" || it.type === "document") {
+        const s = it.source ?? {};
+        process.stderr.write(`  ${YELLOW}[${it.type}]${RESET} ${DIM}${s.mimeType ?? ""}${RESET} ${s.name ?? ""} ${DIM}(${s.size ?? "?"} bytes)${RESET}\n  ${DIM}${s.uri ?? ""}${RESET}\n`);
       } else if (it.type === "thinking") {
         if (it.thinking) process.stderr.write(`${DIM}[thinking]${RESET} ${trunc(it.thinking, 500)}\n`);
       } else if (it.type === "tool_use") {
