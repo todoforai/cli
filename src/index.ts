@@ -28,7 +28,7 @@ import { ConfigStore } from "./config";
 import { readCredential, writeCredential } from "./credentials";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
-import { printFullChat } from "./inspect";
+import { printFullChat, applySlice } from "./inspect";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
@@ -285,6 +285,15 @@ async function main() {
       process.exit(2);
     }
     const todo = await api.getTodo(todoId);
+    if (args.json) {
+      let messages = todo.messages || [];
+      if (slice) {
+        try { messages = applySlice(messages, slice); }
+        catch (e: any) { process.stderr.write(`${RED}${e.message}${RESET}\n`); process.exit(2); }
+      }
+      process.stdout.write(JSON.stringify({ ...todo, messages }, null, 2) + "\n");
+      return;
+    }
     printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), slice);
     return;
   }
