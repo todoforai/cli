@@ -84,40 +84,62 @@ function blockToAnthropic(block: any, mode: InspectMode): any[] {
 }
 
 /** Convert backend `messages[]` to Anthropic-style messages with content-block arrays (B-shape).
- *  Tool calls and their results stay inside the same assistant message, in chronological order. */
+ *  Tool calls and their results stay inside the same assistant message, in chronological order.
+ *  Backend auto-appends tool-output attachments to the next user message; we drop those here
+ *  to avoid showing them twice (in the tool_result AND on the user). */
 export function toAnthropicShape(messages: any[], mode: InspectMode = "default"): any[] {
-  return messages.map((m: any) => {
-    const out: any = { role: m.role };
+  const out: any[] = [];
+  let prevToolAttachmentIds = new Set<string>();
+  for (const m of messages) {
+    const msg: any = { role: m.role };
     if (mode !== "default") {
-      if (m.id) out.id = m.id;
-      if (m.createdAt) out.createdAt = m.createdAt;
+      if (m.id) msg.id = m.id;
+      if (m.createdAt) msg.createdAt = m.createdAt;
     }
     if (m.role === "user") {
-      const atts = (m.attachments ?? []).map((a: any) => {
-        const isImage = (a.mimeType || "").startsWith("image/");
-        return {
-          type: isImage ? "image" : "document",
-          source: { type: "uri", uri: a.uri, name: a.originalName, mimeType: a.mimeType, size: a.fileSize },
-        };
-      });
+      const atts = (m.attachments ?? [])
+        .filter((a: any) => !prevToolAttachmentIds.has(a.id))
+        .map((a: any) => {
+          const isImage = (a.mimeType || "").startsWith("image/");
+          return {
+            type: isImage ? "image" : "document",
+            source: { type: "uri", uri: a.uri, name: a.originalName, mimeType: a.mimeType, size: a.fileSize },
+          };
+        });
+      // If the user message has no real content AND all its attachments were tool outputs
+      // (already shown in the previous assistant's tool_result), skip it entirely.
+      const hadAttachments = (m.attachments ?? []).length > 0;
+      if (!m.content && hadAttachments && atts.length === 0 && mode === "default") {
+        prevToolAttachmentIds = new Set();
+        continue;
+      }
       if (atts.length === 0) {
-        out.content = m.content ?? "";
+        msg.content = m.content ?? "";
       } else {
-        out.content = [
+        msg.content = [
           ...(m.content ? [{ type: "text", text: m.content }] : []),
           ...atts,
         ];
       }
-      return pruneEmpty(out, mode);
+      out.push(pruneEmpty(msg, mode));
+      prevToolAttachmentIds = new Set();
+      continue;
     }
     // assistant: flatten blocks into content[].
     const content: any[] = [];
     if (m.content) content.push({ type: "text", text: m.content });
+    prevToolAttachmentIds = new Set();
+    for (const b of m.blocks ?? []) {
+      for (const r of b.results ?? []) {
+        for (const a of r.attachments ?? []) if (a.id) prevToolAttachmentIds.add(a.id);
+      }
+    }
     for (const b of m.blocks ?? []) content.push(...blockToAnthropic(b, mode));
-    out.content = content;
-    if (mode === "debug" && m.runMeta?.length) out.runMeta = m.runMeta;
-    return pruneEmpty(out, mode);
-  });
+    msg.content = content;
+    if (mode === "debug" && m.runMeta?.length) msg.runMeta = m.runMeta;
+    out.push(pruneEmpty(msg, mode));
+  }
+  return out;
 }
 
 /** Python-style slice on an array length. Accepts `N`, `N:`, `:N`, `N:M` with negatives. */
