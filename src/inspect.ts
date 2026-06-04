@@ -261,7 +261,7 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
   for (let i = 0; i < shaped.length; i++) {
     const msg = shaped[i];
     const orig = messages[i];
-    const ts = orig?.createdAt ? ` ${DIM}${new Date(orig.createdAt).toLocaleTimeString()}${RESET}` : "";
+    const ts = mode !== "default" && orig?.createdAt ? ` ${DIM}${new Date(orig.createdAt).toLocaleTimeString()}${RESET}` : "";
     const label = msg.role === "user" ? `${CYAN}▶ USER${RESET}` : `${GREEN}◀ ASSISTANT${RESET}`;
     process.stderr.write(`\n${label}${ts}\n`);
 
