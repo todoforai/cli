@@ -27,6 +27,7 @@ Usage:
   todoai --inspect :<msg-id>             # Same, using $TODOFORAI_TODO_ID from edge env
   todoai --template <id> [--input k=v] # Start from a registry template
   todoai --list-agents                 # List available agents and exit
+  todoai list [-n 30] [--all] [--status S]   # List todos (open + recent first); see 'list --help'
   todoai status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
   todoai delete <todo-id>              # Permanently delete a todo
   todoai addmessage <todo-id> "text"  # Add a message to an existing todo

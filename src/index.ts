@@ -32,6 +32,7 @@ import { printFullChat } from "./inspect";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
+import { listTodosCommand } from "./list-todos";
 import { ensureEdgeRunning } from "./ensure-edge";
 
 // ── helpers ──────────────────────────────────────────────────────────
@@ -131,7 +132,8 @@ async function main() {
 
   if (args.version) { console.log(VERSION); process.exit(0); }
   if (positionals[0] === "status" && args.help) { printStatusHelp(); process.exit(0); }
-  if (args.help) { printUsage(); process.exit(0); }
+  // Subcommands with their own --help handle it themselves.
+  if (args.help && positionals[0] !== "list" && positionals[0] !== "ls") { printUsage(); process.exit(0); }
 
   // ensureEdgeRunning is intentionally NOT called here — it's invoked
   // per-branch below, only on paths that actually need the bridge daemon
@@ -256,6 +258,19 @@ async function main() {
   }
 
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
+
+  // ── list todos (read-only) ──
+  if (positionals[0] === "list" || positionals[0] === "ls") {
+    let defaultProjectId = (args.project as string) || cfgScope.data.default_project_id;
+    if (!defaultProjectId) {
+      const projects = await api.listProjects();
+      defaultProjectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
+    }
+    // Hand the raw post-`list` argv to the subcommand for its own parsing.
+    const sub = process.argv.slice(process.argv.indexOf(positionals[0]) + 1);
+    await listTodosCommand(api, defaultProjectId, sub);
+    return;
+  }
 
   // ── inspect mode (read-only, no logo/tips) ──
   // Syntax: --inspect [<todoId>][:<msgId>] — empty todoId falls back to $TODOFORAI_TODO_ID
