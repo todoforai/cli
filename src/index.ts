@@ -21,7 +21,7 @@ import { ApiClient, type RegistryTemplate, type RegistryTemplateInput } from "@t
 import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
 import { normalizeApiUrl } from "@todoforai/edge/src/config";
 
-import { DEFAULT_API_URL, VERSION, getEnv, printUsage, parseCliArgs } from "./args";
+import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCliArgs } from "./args";
 import { readLine, readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
@@ -130,6 +130,7 @@ async function main() {
   const { values: args, positionals } = parseCliArgs();
 
   if (args.version) { console.log(VERSION); process.exit(0); }
+  if (positionals[0] === "status" && args.help) { printStatusHelp(); process.exit(0); }
   if (args.help) { printUsage(); process.exit(0); }
 
   // ensureEdgeRunning is intentionally NOT called here — it's invoked
@@ -227,6 +228,32 @@ async function main() {
   }
 
   const api = new ApiClient(apiUrl, apiKey);
+
+  // ── todo management subcommands (read-only on the bridge; no edge spawn) ──
+  if (positionals[0] === "status") {
+    const [, todoId, status] = positionals;
+    if (!todoId || !status) { printStatusHelp(); process.exit(2); }
+    await api.updateTodoStatus(todoId, status);
+    process.stderr.write(`${GREEN}✅ Status of ${todoId} set to ${status}${RESET}\n`);
+    return;
+  }
+  if (positionals[0] === "delete") {
+    const todoId = positionals[1];
+    if (!todoId) { process.stderr.write(`${RED}Usage: todoai delete <todo-id>${RESET}\n`); process.exit(2); }
+    await api.deleteTodo(todoId);
+    process.stderr.write(`${GREEN}✅ Deleted ${todoId}${RESET}\n`);
+    return;
+  }
+  if (positionals[0] === "addmessage") {
+    const [, todoId, ...rest] = positionals;
+    const content = rest.join(" ") || (await readStdin());
+    if (!todoId || !content) { process.stderr.write(`${RED}Usage: todoai addmessage <todo-id> "content"${RESET}\n`); process.exit(2); }
+    const todo = await api.getTodo(todoId);
+    const msg = await api.addMessage(todo.projectId, content, todo.agentSettings || { id: todo.agentSettingsId }, todoId);
+    if (args.json) console.log(JSON.stringify(msg, null, 2));
+    else process.stderr.write(`${GREEN}✅ Message added to ${todoId}${RESET}\n`);
+    return;
+  }
 
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
 

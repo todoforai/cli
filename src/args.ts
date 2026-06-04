@@ -2,6 +2,7 @@
 
 import { parseArgs } from "util";
 import pkg from "../package.json" with { type: "json" };
+import { TodoStatus } from "@shared/fbe";
 
 export const DEFAULT_API_URL = "https://api.todofor.ai";
 export const VERSION: string = pkg.version;
@@ -26,6 +27,9 @@ Usage:
   todoai --inspect :<msg-id>             # Same, using $TODOFORAI_TODO_ID from edge env
   todoai --template <id> [--input k=v] # Start from a registry template
   todoai --list-agents                 # List available agents and exit
+  todoai status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
+  todoai delete <todo-id>              # Permanently delete a todo
+  todoai addmessage <todo-id> "text"  # Add a message to an existing todo
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -51,6 +55,29 @@ Options:
   --reset-config                  Reset config file
   --version, -v                   Print version and exit
   --help, -h                      Show this help
+`);
+}
+
+/** Statuses a user typically sets manually (the rest are driven by the agent/UI). */
+const STATUS_HELP: Partial<Record<TodoStatus, string>> = {
+  [TodoStatus.READY]: "AI finished the work on the TODO",
+  [TodoStatus.READY_CHECKED]: "AI finished and the user reviewed it",
+  [TodoStatus.DONE]: "Completed and finalized",
+  [TodoStatus.REVIEW_REQUESTED]: "Asks the user to review",
+  [TodoStatus.POSTPONED]: "Put off for later",
+  [TodoStatus.ARCHIVED]: "Archived (hidden from active list)",
+  [TodoStatus.DELETED]: "Marked for deletion",
+};
+
+export function printStatusHelp() {
+  process.stderr.write(`
+todoai status <todo-id> <STATUS>
+
+Common statuses:
+${Object.entries(STATUS_HELP).map(([s, d]) => `  ${s.padEnd(18)}${d}`).join("\n")}
+
+All valid statuses:
+  ${Object.values(TodoStatus).join(", ")}
 `);
 }
 
