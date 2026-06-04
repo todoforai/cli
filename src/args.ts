@@ -49,6 +49,7 @@ Options:
   --no-watch                      Create todo and exit
   --no-edge                       Do not auto-spawn edge daemon
   --json                          Output as JSON
+  --detailed                      'inspect --json': keep internal/UI fields (userId, deviceId, runMode, …)
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --show-config                   Show config
@@ -102,6 +103,7 @@ export function parseCliArgs() {
       "no-watch": { type: "boolean", default: false },
       "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
+      detailed: { type: "boolean", default: false },
       safe: { type: "boolean", default: false },
       debug: { type: "boolean", short: "d", default: false },
       "show-config": { type: "boolean", default: false },

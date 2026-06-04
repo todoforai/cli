@@ -2,6 +2,110 @@
 
 import { CYAN, DIM, GREEN, YELLOW, RED, BOLD, RESET } from "./colors";
 
+export type InspectMode = "default" | "detailed" | "debug";
+
+/** Drop noise from inspect --json output by mode.
+ *  default: chat-shape only — assistant text/tool calls/results, user content.
+ *  detailed: + block/message ids, timestamps, agentSettingsId, scheduledTimestamp.
+ *  debug:   + runMeta (cost/tokens), generationCompleted, userId, deviceId, runMode.
+ */
+const DROP_IF_EMPTY = new Set(["runMeta", "meta", "attachments", "blocks"]);
+const ALWAYS_DROP = new Set(["messageIds"]);
+// Kept only in --detailed and --debug (not in default).
+const DETAILED_ONLY = new Set([
+  "id", "createdAt", "lastActivityAt", "modifiedAt",
+  "agentSettingsId", "scheduledTimestamp", "workflowVersion",
+  "todoId", "blockId", "parentBlockId", "messageIds",
+  "stop_sequence", "permissions", "isPublic", "metadata",
+]);
+// Kept only in --debug.
+const DEBUG_ONLY = new Set([
+  "runMeta", "generationCompleted",
+  "userId", "deviceId", "runMode", "long",
+  "timeout",
+]);
+const isEmpty = (x: any) =>
+  (Array.isArray(x) && x.length === 0) ||
+  (x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).length === 0);
+
+export function pruneEmpty(v: any, mode: InspectMode = "default"): any {
+  if (Array.isArray(v)) return v.map(x => pruneEmpty(x, mode));
+  if (v && typeof v === "object") {
+    const o: any = {};
+    for (const [k, raw] of Object.entries(v)) {
+      if (ALWAYS_DROP.has(k)) continue;
+      if (DEBUG_ONLY.has(k) && mode !== "debug") continue;
+      if (DETAILED_ONLY.has(k) && mode === "default") continue;
+      if (raw === "") continue;
+      if (k === "scheduledTimestamp" && (raw === 0 || raw === 1)) continue;
+      if (DROP_IF_EMPTY.has(k) && isEmpty(raw)) continue;
+      o[k] = pruneEmpty(raw, mode);
+    }
+    return o;
+  }
+  return v;
+}
+
+/** Map a backend block to one or two Anthropic-style content items.
+ *  - text/reason → single `text`/`thinking` item.
+ *  - tool blocks (bash/read/list/explore/...) → `tool_use` + adjacent `tool_result`.
+ */
+function blockToAnthropic(block: any, mode: InspectMode): any[] {
+  const t = block.type;
+  if (t === "text") return [{ type: "text", text: block.content ?? "" }];
+  if (t === "reason") return [{ type: "thinking", thinking: block.content ?? "" }];
+
+  // tool_use: name = block type, input = the type-specific fields we know about.
+  const input: any = {};
+  for (const k of ["cmd", "path", "prompt", "long"]) if (block[k] !== undefined) input[k] = block[k];
+  const use: any = { type: "tool_use", name: t, input };
+  if (mode !== "default") use.id = block.id;
+
+  // tool_result: collapse `results[]` (attachments + inline text) into a single content string/array.
+  const items: any[] = [use];
+  if (block.results?.length) {
+    const content = block.results.flatMap((r: any) => {
+      const out: any[] = [];
+      for (const att of r.attachments ?? []) {
+        out.push({
+          type: "text",
+          text: `<attachment uri="${att.uri}" name="${att.originalName}" size=${att.fileSize}/>`,
+        });
+      }
+      if (typeof r.content === "string" && r.content) out.push({ type: "text", text: r.content });
+      return out;
+    });
+    const result: any = { type: "tool_result", content: content.length === 1 && content[0].type === "text" ? content[0].text : content };
+    if (mode !== "default") result.tool_use_id = block.id;
+    if (block.status && block.status !== "COMPLETED") result.status = block.status;
+    items.push(result);
+  }
+  return items;
+}
+
+/** Convert backend `messages[]` to Anthropic-style messages with content-block arrays (B-shape).
+ *  Tool calls and their results stay inside the same assistant message, in chronological order. */
+export function toAnthropicShape(messages: any[], mode: InspectMode = "default"): any[] {
+  return messages.map((m: any) => {
+    const out: any = { role: m.role };
+    if (mode !== "default") {
+      if (m.id) out.id = m.id;
+      if (m.createdAt) out.createdAt = m.createdAt;
+    }
+    if (m.role === "user") {
+      out.content = m.content ?? "";
+      return pruneEmpty(out, mode);
+    }
+    // assistant: flatten blocks into content[].
+    const content: any[] = [];
+    if (m.content) content.push({ type: "text", text: m.content });
+    for (const b of m.blocks ?? []) content.push(...blockToAnthropic(b, mode));
+    out.content = content;
+    if (mode === "debug" && m.runMeta?.length) out.runMeta = m.runMeta;
+    return pruneEmpty(out, mode);
+  });
+}
+
 /** Python-style slice on an array length. Accepts `N`, `N:`, `:N`, `N:M` with negatives. */
 export function applySlice<T>(arr: T[], spec: string): T[] {
   if (!spec.includes(":")) {
@@ -17,7 +121,10 @@ export function applySlice<T>(arr: T[], spec: string): T[] {
   return arr.slice(start, end);
 }
 
-export function printFullChat(todo: any, frontendUrl: string, slice?: string) {
+const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n) + `\n${DIM}... (${s.length} chars)${RESET}` : s;
+const indent = (s: string, pre: string) => s.split("\n").join(`\n${pre}`);
+
+export function printFullChat(todo: any, frontendUrl: string, slice?: string, mode: InspectMode = "default") {
   const statusColors: Record<string, string> = {
     DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
     ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED,
@@ -43,42 +150,38 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string) {
     return;
   }
 
-  for (const msg of messages) {
-    const roleLabel = msg.role === "user" ? `${CYAN}▶ USER${RESET}` : `${GREEN}◀ ASSISTANT${RESET}`;
-    process.stderr.write(`\n${roleLabel} ${DIM}${new Date(msg.createdAt).toLocaleTimeString()}${RESET}\n`);
+  // Render from the canonical Anthropic shape (single source of truth shared with --json).
+  const shaped = toAnthropicShape(messages, mode);
+  let toolUseCount = 0, errorCount = 0;
 
-    if (msg.content) {
-      const content = msg.content.length > 2000 ? msg.content.slice(0, 2000) + `\n${DIM}... (${msg.content.length} chars total)${RESET}` : msg.content;
-      process.stdout.write(content + "\n");
-    }
+  for (let i = 0; i < shaped.length; i++) {
+    const msg = shaped[i];
+    const orig = messages[i];
+    const ts = orig?.createdAt ? ` ${DIM}${new Date(orig.createdAt).toLocaleTimeString()}${RESET}` : "";
+    const label = msg.role === "user" ? `${CYAN}▶ USER${RESET}` : `${GREEN}◀ ASSISTANT${RESET}`;
+    process.stderr.write(`\n${label}${ts}\n`);
 
-    for (const block of msg.blocks || []) {
-      const blockStatusColor = block.status === "COMPLETED" ? GREEN : block.status === "ERROR" || block.status === "DENIED" ? RED : YELLOW;
-      process.stderr.write(`\n  ${YELLOW}[${block.type}]${RESET} ${blockStatusColor}${block.status}${RESET}`);
-      for (const key of ["path", "cmd", "name", "server_name", "tool_name"]) {
-        if (block[key]) process.stderr.write(` ${DIM}${key}=${RESET}${block[key]}`);
-      }
-      process.stderr.write("\n");
-
-      if (block.content) {
-        const content = block.content.length > 500 ? block.content.slice(0, 500) + `\n${DIM}... (${block.content.length} chars)${RESET}` : block.content;
-        process.stdout.write(`  ${DIM}│${RESET} ${content.split("\n").join(`\n  ${DIM}│${RESET} `)}\n`);
-      }
-      if (block.result) {
-        const result = block.result.length > 500 ? block.result.slice(0, 500) + `\n${DIM}... (${block.result.length} chars)${RESET}` : block.result;
-        process.stderr.write(`  ${DIM}└─ result:${RESET} ${result.split("\n").join(`\n  ${DIM}│${RESET}  `)}\n`);
-      }
-      if (block.error_message) {
-        process.stderr.write(`  ${RED}└─ error: ${block.error_message}${RESET}\n`);
-      }
-      if (block.stacktrace) {
-        process.stderr.write(`  ${DIM}${block.stacktrace.slice(0, 300)}${block.stacktrace.length > 300 ? "..." : ""}${RESET}\n`);
+    const items = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
+    for (const it of items) {
+      if (it.type === "text") {
+        if (it.text) process.stdout.write(trunc(it.text, 2000) + "\n");
+      } else if (it.type === "thinking") {
+        if (it.thinking) process.stderr.write(`${DIM}[thinking]${RESET} ${trunc(it.thinking, 500)}\n`);
+      } else if (it.type === "tool_use") {
+        toolUseCount++;
+        const argStr = Object.entries(it.input || {}).map(([k, v]) => `${DIM}${k}=${RESET}${String(v).split("\n")[0].slice(0, 80)}`).join(" ");
+        process.stderr.write(`  ${YELLOW}[${it.name}]${RESET} ${argStr}\n`);
+      } else if (it.type === "tool_result") {
+        const status = it.status && it.status !== "COMPLETED" ? ` ${RED}${it.status}${RESET}` : "";
+        if (status) errorCount++;
+        const body = typeof it.content === "string"
+          ? it.content
+          : (it.content || []).map((c: any) => c.text ?? "").join("\n");
+        process.stderr.write(`  ${DIM}└─ result:${RESET}${status} ${indent(trunc(body, 500), `     ${DIM}│${RESET} `)}\n`);
       }
     }
   }
 
   process.stderr.write("\n" + "─".repeat(60) + "\n");
-  const blockCount = messages.reduce((n: number, m: any) => n + (m.blocks?.length || 0), 0);
-  const errorBlocks = messages.reduce((n: number, m: any) => n + (m.blocks || []).filter((b: any) => b.status === "ERROR" || b.type === "error").length, 0);
-  process.stderr.write(`${DIM}Messages: ${messages.length} | Blocks: ${blockCount} | Errors: ${errorBlocks}${RESET}\n`);
+  process.stderr.write(`${DIM}Messages: ${shaped.length} | Tool calls: ${toolUseCount} | Tool errors: ${errorCount}${RESET}\n`);
 }

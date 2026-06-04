@@ -28,7 +28,7 @@ import { ConfigStore } from "./config";
 import { readCredential, writeCredential } from "./credentials";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
-import { printFullChat, applySlice } from "./inspect";
+import { printFullChat, applySlice, toAnthropicShape, type InspectMode } from "./inspect";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
@@ -291,10 +291,12 @@ async function main() {
         try { messages = applySlice(messages, slice); }
         catch (e: any) { process.stderr.write(`${RED}${e.message}${RESET}\n`); process.exit(2); }
       }
-      process.stdout.write(JSON.stringify({ ...todo, messages }, null, 2) + "\n");
+      const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
+      process.stdout.write(JSON.stringify(toAnthropicShape(messages, mode), null, 2) + "\n");
       return;
     }
-    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), slice);
+    const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
+    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), slice, mode);
     return;
   }
 
