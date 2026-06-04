@@ -273,17 +273,15 @@ async function main() {
   }
 
   // ── inspect mode (read-only, no logo/tips) ──
-  // Syntax: --inspect [<todoId>][@<slice>]
+  // Syntax: --inspect <todoId>[@<slice>]
   //   <slice> = Python-style on messages, e.g. :1, -3:, 5:10, 7
-  //   Empty <todoId> falls back to $TODOFORAI_TODO_ID
   if (args.inspect !== undefined) {
     const raw = String(args.inspect);
     const at = raw.indexOf("@");
-    const rawTodoId = at < 0 ? raw : raw.slice(0, at);
+    const todoId = at < 0 ? raw : raw.slice(0, at);
     const slice = at < 0 ? undefined : raw.slice(at + 1);
-    const todoId = rawTodoId || getEnv("TODO_ID");
     if (!todoId) {
-      process.stderr.write(`${RED}Error: --inspect requires a todoId (or $TODOFORAI_TODO_ID env var)${RESET}\n`);
+      process.stderr.write(`${RED}Error: --inspect requires a todoId${RESET}\n`);
       process.exit(2);
     }
     const todo = await api.getTodo(todoId);
