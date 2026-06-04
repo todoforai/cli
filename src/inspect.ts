@@ -61,21 +61,21 @@ function blockToAnthropic(block: any, mode: InspectMode): any[] {
   const use: any = { type: "tool_use", name: t, input };
   if (mode !== "default") use.id = block.id;
 
-  // tool_result: collapse `results[]` (attachments + inline text) into a single content string/array.
+  // tool_result: keep the backend's native <attachment .../> string — that's literally
+  // what the LLM sees in context. Auto-generated names (bash:..., read:..., etc.) get
+  // stripped to just URI + size.
   const items: any[] = [use];
   if (block.results?.length) {
-    const content = block.results.flatMap((r: any) => {
-      const out: any[] = [];
+    const parts: string[] = [];
+    for (const r of block.results) {
       for (const att of r.attachments ?? []) {
-        out.push({
-          type: "text",
-          text: `<attachment uri="${att.uri}" name="${att.originalName}" size=${att.fileSize}/>`,
-        });
+        const isAutoName = /^(bash|read|list|explore|edit|write|grep):/.test(att.originalName ?? "");
+        const nameAttr = att.originalName && !isAutoName ? ` name="${att.originalName}"` : "";
+        parts.push(`<attachment uri="${att.uri}"${nameAttr} size=${att.fileSize}/>`);
       }
-      if (typeof r.content === "string" && r.content) out.push({ type: "text", text: r.content });
-      return out;
-    });
-    const result: any = { type: "tool_result", content: content.length === 1 && content[0].type === "text" ? content[0].text : content };
+      if (typeof r.content === "string" && r.content) parts.push(r.content);
+    }
+    const result: any = { type: "tool_result", content: parts.join("\n") };
     if (mode !== "default") result.tool_use_id = block.id;
     if (block.status && block.status !== "COMPLETED") result.status = block.status;
     items.push(result);
@@ -125,10 +125,11 @@ export function toAnthropicShape(messages: any[], mode: InspectMode = "default")
       prevToolAttachmentIds = new Set();
       continue;
     }
-    // assistant: flatten blocks into content[].
+    // assistant: flatten blocks into content[]. Accumulate tool-output attachment IDs so the
+    // next user message can drop the backend's auto-fed duplicates (may span several
+    // assistant turns before the next user message).
     const content: any[] = [];
     if (m.content) content.push({ type: "text", text: m.content });
-    prevToolAttachmentIds = new Set();
     for (const b of m.blocks ?? []) {
       for (const r of b.results ?? []) {
         for (const a of r.attachments ?? []) if (a.id) prevToolAttachmentIds.add(a.id);
@@ -213,10 +214,8 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
       } else if (it.type === "tool_result") {
         const status = it.status && it.status !== "COMPLETED" ? ` ${RED}${it.status}${RESET}` : "";
         if (status) errorCount++;
-        const body = typeof it.content === "string"
-          ? it.content
-          : (it.content || []).map((c: any) => c.text ?? "").join("\n");
-        process.stderr.write(`  ${DIM}└─ result:${RESET}${status} ${indent(trunc(body, 500), `     ${DIM}│${RESET} `)}\n`);
+        const body = trunc(typeof it.content === "string" ? it.content : "", 500);
+        process.stderr.write(`  ${DIM}└─ result:${RESET}${status} ${indent(body, `     ${DIM}│${RESET} `)}\n`);
       }
     }
   }
