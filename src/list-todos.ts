@@ -6,6 +6,7 @@
  */
 
 import { parseArgs } from "util";
+import { TodoStatus } from "@shared/fbe";
 import { CYAN, DIM, GREEN, YELLOW, RED, RESET } from "./colors";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -21,6 +22,9 @@ const CLOSED = new Set([
   "ERROR_CHECKED", "ARCHIVED", "DELETED",
 ]);
 
+const VALID_STATUS = new Set<string>(Object.values(TodoStatus));
+const isOpen = (s: string) => !CLOSED.has(s);
+
 function printHelp() {
   process.stderr.write(`
 todoai list — list todos in a project (recent first)
@@ -30,7 +34,7 @@ Usage:
 
 Flags:
   -n, --limit <n>          Max rows to show (default: 30)
-  -s, --status <S[,S2]>    Filter by status (comma-separated). Implies --all.
+  -s, --status <S[,S2]>    Filter by status (comma-separated, union).
   -A, --all                Include DONE (also CANCELLED, ARCHIVED, …)
       --project <id>       Project ID (default: current default project)
       --json               Output raw JSON
@@ -65,15 +69,23 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
   if (!projectId) { process.stderr.write(`${RED}Error: no project (pass --project <id> or set a default)${RESET}\n`); process.exit(1); }
 
   const limit = values.limit ? Math.max(1, Number(values.limit)) : 30;
-  const wanted = values.status
-    ? new Set(String(values.status).split(",").map(s => s.trim().toUpperCase()).filter(Boolean))
+  // Parse --status. "OPEN" is a pseudo-status meaning "any non-closed". Unknown
+  // statuses fall back to OPEN (so a typo/legacy value shows the open list, not nothing).
+  const requested = values.status
+    ? String(values.status).split(",").map(s => s.trim().toUpperCase()).filter(Boolean)
     : null;
-  const includeClosed = !!values.all || !!wanted;
+  const wantOpen = !!requested?.some(s => s === "OPEN" || !VALID_STATUS.has(s));
+  const wanted = requested ? new Set(requested.filter(s => VALID_STATUS.has(s))) : null;
+  const includeClosed = !!values.all || (!!wanted && wanted.size > 0);
 
   const todos: any[] = await api.listTodos(projectId);
   let rows = todos
     .filter(t => includeClosed || !CLOSED.has(String(t.status).toUpperCase()))
-    .filter(t => !wanted || wanted.has(String(t.status).toUpperCase()))
+    .filter(t => {
+      if (!requested) return true;
+      const s = String(t.status).toUpperCase();
+      return (wantOpen && isOpen(s)) || (wanted?.has(s) ?? false);
+    })
     .sort((a, b) => (b.lastActivityAt ?? b.createdAt ?? 0) - (a.lastActivityAt ?? a.createdAt ?? 0))
     .slice(0, limit);
 
