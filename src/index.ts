@@ -32,6 +32,7 @@ import { printFullChat, applySlice, toAnthropicShape, type InspectMode, type Ins
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
+import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand } from "./list-todos";
 import { ensureEdgeRunning } from "./ensure-edge";
 
@@ -132,8 +133,9 @@ async function main() {
 
   if (args.version) { console.log(VERSION); process.exit(0); }
   if (positionals[0] === "status" && args.help) { printStatusHelp(); process.exit(0); }
+  if (positionals[0] === "agent" && args.help) { printAgentHelp(); process.exit(0); }
   // Subcommands with their own --help handle it themselves.
-  if (args.help && positionals[0] !== "list" && positionals[0] !== "ls") { printUsage(); process.exit(0); }
+  if (args.help && !["list", "ls", "agent"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
   // ensureEdgeRunning is intentionally NOT called here — it's invoked
   // per-branch below, only on paths that actually need the bridge daemon
@@ -258,6 +260,8 @@ async function main() {
   }
 
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
+
+  if (positionals[0] === "agent") { await agentCommand(api, positionals, args, formatPathWithTilde); return; }
 
   // ── list todos (read-only) ──
   if (positionals[0] === "list" || positionals[0] === "ls") {

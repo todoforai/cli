@@ -26,6 +26,7 @@ Usage:
   todoai --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
   todoai --template <id> [--input k=v] # Start from a registry template
   todoai --list-agents                 # List available agents and exit
+  todoai agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
   todoai list [-n 30] [--all] [--status S]   # List todos (open + recent first); see 'list --help'
   todoai status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
   todoai delete <todo-id>              # Permanently delete a todo
@@ -90,6 +91,7 @@ export function parseCliArgs() {
       path: { type: "string", default: "." },
       project: { type: "string" },
       agent: { type: "string", short: "a" },
+      model: { type: "string" },
       "list-agents": { type: "boolean", default: false },
       "api-url": { type: "string" },
       "api-key": { type: "string" },
