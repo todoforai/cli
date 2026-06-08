@@ -271,7 +271,7 @@ async function main() {
     }
     // Hand the raw post-`list` argv to the subcommand for its own parsing.
     const sub = process.argv.slice(process.argv.indexOf(positionals[0]) + 1);
-    await listTodosCommand(api, defaultProjectId, sub);
+    await listTodosCommand(api, defaultProjectId ?? undefined, sub);
     return;
   }
 

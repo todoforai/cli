@@ -19,8 +19,8 @@ export async function listAgentsCommand(
     model: a.model || "",
     paths: getAgentWorkspacePaths(a).map(opts.formatPath),
   }));
-  const nameW = Math.max(4, ...rows.map(r => r.name.length));
-  const modelW = Math.max(5, ...rows.map(r => r.model.length));
+  const nameW = Math.max(4, ...rows.map((r: { name: string }) => r.name.length));
+  const modelW = Math.max(5, ...rows.map((r: { model: string }) => r.model.length));
   process.stderr.write(`${DIM}${"NAME".padEnd(nameW)}  ${"MODEL".padEnd(modelW)}  ID${" ".repeat(34)}PATHS${RESET}\n`);
   for (const r of rows) {
     process.stderr.write(`${BRAND}${r.name.padEnd(nameW)}${RESET}  ${CYAN}${r.model.padEnd(modelW)}${RESET}  ${DIM}${r.id}${RESET}  ${r.paths.join(", ")}\n`);
