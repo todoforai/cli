@@ -401,7 +401,9 @@ async function main() {
 
     const todo = await api.getTodo(todoId);
     const projectId = todo.projectId;
-    const agent = todo.agentSettings || { name: "default" };
+    // getTodo only returns agentSettingsId; addMessage needs the full settings (id+name+…),
+    // so fetch them when the todo didn't inline them.
+    const agent = todo.agentSettings || await api.getAgentSettings(todo.agentSettingsId);
 
     // Display existing messages
     for (const msg of todo.messages || []) {
@@ -414,7 +416,19 @@ async function main() {
     const ws = new FrontendWebSocket(apiUrl, apiKey);
     await ws.connect();
 
-    await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, false, cfg);
+    // A prompt passed on resume (positional or stdin) is appended to the existing
+    // todo and watched — same as the create path. Without it we'd just idle in the
+    // interactive loop, so `-n` resume would detach having sent nothing.
+    const autoApprove = !!args["dangerously-skip-permissions"];
+    const followUp = positionals.length > 0 ? positionals.join(" ") : (process.stdin.isTTY ? "" : await readStdin());
+    if (followUp) {
+      cfg.addToHistory(followUp);
+      await api.addMessage(projectId, followUp, agent, todoId);
+      await watchTodo(ws, todoId, projectId, { json: !!args.json, autoApprove, agentSettings: agent });
+    }
+    if (!args["non-interactive"]) {
+      await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, autoApprove, cfg);
+    }
     await ws.close();
     return;
   }
