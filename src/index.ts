@@ -217,14 +217,13 @@ async function main() {
   }
 
   // ── resolve API client ──
-  // Priority: CLI flag > short-lived edge token (TODOFORAI_API_TOKEN) > long-lived
-  // env key > shared credentials.json > device-login. The edge shell injects
-  // TODOFORAI_API_TOKEN matching the backend it's connected to, so binaries
-  // spawned from a todo shell auth automatically without device-login prompts.
+  // Priority: CLI flag > shared credentials.json (URL-keyed, backend-correct) >
+  // env token (TODOFORAI_API_TOKEN, URL-blind) > device-login. credentials.json is
+  // keyed by apiUrl so it always matches --api-url; the env token is injected by the
+  // edge shell for its own backend, so it only fits when no URL-keyed entry exists.
   let apiKey = (args["api-key"] as string)
-    || getEnv("API_TOKEN")
-    || getEnv("API_KEY")
     || readCredential(apiUrl)
+    || getEnv("API_TOKEN")
     || "";
 
   if (!apiKey) {
