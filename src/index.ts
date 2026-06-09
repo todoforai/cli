@@ -411,7 +411,7 @@ async function main() {
       process.stderr.write(`${role}: ${(msg.content || "").slice(0, 200)}\n`);
     }
 
-    process.stderr.write(`\n${"─".repeat(40)}\nResumed todo: ${todoId}\n`);
+    process.stderr.write(`\n${"─".repeat(40)}\nResumed: ${CYAN}${getFrontendUrl(apiUrl, projectId, todoId)}${RESET}\n`);
 
     const ws = new FrontendWebSocket(apiUrl, apiKey);
     await ws.connect();
