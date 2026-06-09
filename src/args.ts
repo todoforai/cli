@@ -21,8 +21,8 @@ Usage:
   todoai -n "Quick task"               # Non-interactive (run and exit)
   echo "content" | todoai              # Pipe from stdin
   todoai --path /my/project "Fix bug"  # Explicit workspace path
-  todoai -c                            # Resume last todo
-  todoai --resume <todo-id>            # Resume specific todo
+  todoai -c ["prompt"]                 # Resume last todo (optional prompt sent on attach)
+  todoai --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
   todoai --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
   todoai --template <id> [--input k=v] # Start from a registry template
   todoai --list-agents                 # List available agents and exit
