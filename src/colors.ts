@@ -1,7 +1,7 @@
 /** Shared ANSI color constants. Disabled when stdout is not a TTY or NO_COLOR is set. */
 
 const on = !process.env.NO_COLOR && !!process.stdout.isTTY;
-const c = (seq: string) => on ? seq : "";
+export const c = (seq: string) => on ? seq : "";
 
 export const YELLOW = c("\x1b[33m");
 export const GREEN = c("\x1b[32m");

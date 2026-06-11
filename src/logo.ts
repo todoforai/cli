@@ -1,4 +1,5 @@
 /** ASCII block logo for TODOforAI CLI. */
+import { c } from "./colors";
 
 // Letter bitmaps: 6 rows tall, 4 wide (except 'i' = 1 wide)
 // 'x' = bright white, 'l' = gray, ' ' = black
@@ -19,11 +20,11 @@ const GAP = " ";
 const WORD = "todo4ai";
 
 function renderHalfBlock(top: string, bot: string): string {
-  const W = "\x1b[38;2;249;110;46m"; // brand orange fg (#f96e2e)
-  const G = "\x1b[38;2;140;60;20m"; // dark orange fg (fade)
-  const BW = "\x1b[48;2;249;110;46m"; // brand orange bg
-  const BG = "\x1b[48;2;140;60;20m"; // dark orange bg (fade)
-  const R = "\x1b[0m";
+  const W = c("\x1b[38;2;249;110;46m"); // brand orange fg (#f96e2e)
+  const G = c("\x1b[38;2;140;60;20m"); // dark orange fg (fade)
+  const BW = c("\x1b[48;2;249;110;46m"); // brand orange bg
+  const BG = c("\x1b[48;2;140;60;20m"); // dark orange bg (fade)
+  const R = c("\x1b[0m");
 
   if (top === " " && bot === " ") return " ";
   if (top === bot) {
