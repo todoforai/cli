@@ -167,7 +167,9 @@ async function main() {
   // ── device login ──
   async function deviceLogin(): Promise<string> {
     const loginApi = new ApiClient(apiUrl, ""); // no key needed for init
-    const { code, url, expiresIn } = await loginApi.initDeviceLogin("cli");
+    // clientName "edge" → backend mints a durable apiKey (handled below); "cli"/"bridge"
+    // route to the device-credential branch that returns device/apiToken (no apiKey).
+    const { code, url, expiresIn } = await loginApi.initDeviceLogin("edge");
 
     const userCode = new URL(url).searchParams.get("user_code") || code.slice(-8).toUpperCase();
     const formattedCode = userCode.length === 8 ? `${userCode.slice(0, 4)}-${userCode.slice(4)}` : userCode;
