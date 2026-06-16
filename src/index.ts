@@ -548,6 +548,10 @@ async function main() {
 
   // ── create todo ──
   if (args.model) agent = { ...agent, model: args.model };
+  if (args["raw-sysmsg"]) {
+    const sysmsg = readFileSync(resolve(args["raw-sysmsg"] as string), "utf-8");
+    agent = { ...agent, systemMessage: sysmsg, systemMessageMode: "raw" };
+  }
   if (args["allow-all"]) {
     const perms = agent.permissions || { allow: [], ask: [], deny: [] };
     agent = { ...agent, permissions: { ...perms, allow: [...(perms.allow || []), "*:*"] } };

@@ -47,6 +47,7 @@ Options:
   --non-interactive, -n           Run to completion and exit without interactive prompt
   --dangerously-skip-permissions  Auto-approve all blocks (for CI/benchmarks)
   --allow-all                     Set permissions to allow all tools (no approval needed)
+  --raw-sysmsg <file>             Use file contents verbatim as system prompt (new TODO only)
   --no-watch                      Create todo and exit
   --no-edge                       Do not auto-spawn edge daemon
   --json                          Output as JSON
@@ -103,6 +104,7 @@ export function parseCliArgs() {
       "non-interactive": { type: "boolean", short: "n", default: false },
       "dangerously-skip-permissions": { type: "boolean", default: false },
       "allow-all": { type: "boolean", default: false },
+      "raw-sysmsg": { type: "string" },
       "no-watch": { type: "boolean", default: false },
       "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
