@@ -29,7 +29,7 @@ import { readCredential, writeCredential } from "./credentials";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
 import { printFullChat, applySlice, toAnthropicShape, type InspectMode, type InspectFormat } from "./inspect";
-import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
+import { selectProject, selectAgent, getDisplayName, getItemId, resolveAgentMatch } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
@@ -440,13 +440,18 @@ async function main() {
   let agents: any[] | null = null;
 
   if (args.agent) {
-    const matches = await api.listAgentSettings({ name: args.agent as string });
-    if (matches.length > 0) {
-      preMatchedAgent = matches[0];
-    } else {
+    agents = await api.listAgentSettings();
+    const { match, ambiguous } = resolveAgentMatch(agents, args.agent as string);
+    if (ambiguous) {
+      process.stderr.write(`Error: Ambiguous agent '${args.agent}' — ${ambiguous.length} matches. Re-run with the exact id:\n`);
+      for (const a of ambiguous) process.stderr.write(`  ${getDisplayName(a)}  ${DIM}${getItemId(a)}${RESET}\n`);
+      process.exit(1);
+    }
+    if (!match) {
       process.stderr.write(`Error: Agent '${args.agent}' not found\n`);
       process.exit(1);
     }
+    preMatchedAgent = match;
     cfgScope.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
   } else {
     // Resolve from --path or cwd

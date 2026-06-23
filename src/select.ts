@@ -14,6 +14,32 @@ export function getItemId(item: any): string {
   return item?.id || "";
 }
 
+/**
+ * Resolve an agent from a free-text query using tiered precedence so that an
+ * exact name always beats a coincidental substring (e.g. "ads" must not match
+ * "Downloads"): exact id → exact name → name prefix → word-boundary → substring.
+ * Returns the single match, or an `ambiguous` list when a tier has >1 hit.
+ */
+export function resolveAgentMatch(agents: any[], query: string): { match?: any; ambiguous?: any[] } {
+  const byId = agents.find((a) => getItemId(a) === query);
+  if (byId) return { match: byId };
+  const q = query.toLowerCase();
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const boundary = new RegExp(`\\b${esc}`);
+  const name = (a: any) => getDisplayName(a).toLowerCase();
+  const tiers = [
+    agents.filter((a) => name(a) === q),
+    agents.filter((a) => name(a).startsWith(q)),
+    agents.filter((a) => boundary.test(name(a))),
+    agents.filter((a) => name(a).includes(q)),
+  ];
+  for (const tier of tiers) {
+    if (tier.length === 1) return { match: tier[0] };
+    if (tier.length > 1) return { ambiguous: tier };
+  }
+  return {};
+}
+
 // ── terminal I/O ─────────────────────────────────────────────────────
 
 function terminalLine(prompt: string): Promise<string> {

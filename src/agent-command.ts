@@ -3,7 +3,7 @@
 import type { ApiClient } from "@todoforai/edge/src/api";
 import { getAgentWorkspacePaths } from "./agent";
 import { listAgentsCommand } from "./list-agents";
-import { getDisplayName, getItemId } from "./select";
+import { getDisplayName, getItemId, resolveAgentMatch } from "./select";
 import { BRAND, CYAN, DIM, GREEN, RED, RESET } from "./colors";
 
 export function printAgentHelp() {
@@ -50,18 +50,13 @@ function parseAssignment(arg: string): [string, any] {
   try { return [key, JSON.parse(raw)]; } catch { return [key, raw]; }
 }
 
-/** Resolve an agent by exact id, exact name, then unique partial name. */
+/** Resolve an agent by exact id, exact name, prefix, word-boundary, then substring. */
 function resolveAgent(agents: any[], query: string): any {
-  const byId = agents.find((a) => getItemId(a) === query);
-  if (byId) return byId;
-  const q = query.toLowerCase();
-  const exact = agents.filter((a) => getDisplayName(a).toLowerCase() === q);
-  if (exact.length === 1) return exact[0];
-  const partial = agents.filter((a) => getDisplayName(a).toLowerCase().includes(q));
-  if (partial.length === 1) return partial[0];
-  if (partial.length > 1) {
-    process.stderr.write(`${RED}Ambiguous agent '${query}', matches:${RESET}\n`);
-    for (const a of partial) process.stderr.write(`  ${getDisplayName(a)}  ${DIM}${getItemId(a)}${RESET}\n`);
+  const { match, ambiguous } = resolveAgentMatch(agents, query);
+  if (match) return match;
+  if (ambiguous) {
+    process.stderr.write(`${RED}Ambiguous agent '${query}' — ${ambiguous.length} matches. Re-run with the exact id:${RESET}\n`);
+    for (const a of ambiguous) process.stderr.write(`  ${getDisplayName(a)}  ${DIM}${getItemId(a)}${RESET}\n`);
     process.exit(2);
   }
   process.stderr.write(`${RED}No agent matching '${query}'${RESET}\n`);
