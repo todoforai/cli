@@ -8,12 +8,12 @@ import { BRAND, CYAN, DIM, GREEN, RED, RESET } from "./colors";
 
 export function printAgentHelp() {
   process.stderr.write(`
-todoai agent — inspect and update agent settings
+todoforai-cli agent — inspect and update agent settings
 
 Usage:
-  todoai agent list                            List agents (name, model, id, paths)
-  todoai agent get <agent>                     Show a single agent's settings
-  todoai agent update <agent> <field=value>…   Update one or more settings
+  todoforai-cli agent list                            List agents (name, model, id, paths)
+  todoforai-cli agent get <agent>                     Show a single agent's settings
+  todoforai-cli agent update <agent> <field=value>…   Update one or more settings
 
 <agent> is a name or id (unique partial name also works).
 Fields map directly to agent settings; values are parsed as JSON when possible
@@ -26,9 +26,9 @@ Fields map directly to agent settings; values are parsed as JSON when possible
   name            agent display name
 
 Examples:
-  todoai agent update <agent> model=claude
-  todoai agent update <agent> model=anthropic:anthropic/claude-opus-4.8 temperature=0.5
-  todoai agent update <agent> sysmsg="You are a terse video editor."
+  todoforai-cli agent update <agent> model=claude
+  todoforai-cli agent update <agent> model=anthropic:anthropic/claude-opus-4.8 temperature=0.5
+  todoforai-cli agent update <agent> sysmsg="You are a terse video editor."
 `);
 }
 
@@ -90,7 +90,7 @@ export async function agentCommand(
   if (sub === "update") {
     const query = positionals[2];
     const assignments = positionals.slice(3);
-    if (!query || !assignments.length) { process.stderr.write(`${RED}Usage: todoai agent update <name|id> <field=value>…${RESET}\n`); process.exit(2); }
+    if (!query || !assignments.length) { process.stderr.write(`${RED}Usage: todoforai-cli agent update <name|id> <field=value>…${RESET}\n`); process.exit(2); }
     const updates = Object.fromEntries(assignments.map(parseAssignment));
     const agents = await api.listAgentSettings();
     const agent = resolveAgent(agents, query);

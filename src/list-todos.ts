@@ -1,4 +1,4 @@
-/** `todoai list` — list todos (gh issue list style).
+/** `todoforai-cli list` — list todos (gh issue list style).
  *
  * Defaults mirror `gh issue list`:
  *   - open-only (hides DONE/READY_CHECKED/CANCELLED(_CHECKED)/ERROR_CHECKED/ARCHIVED/DELETED)
@@ -30,10 +30,10 @@ const isOpen = (s: string) => !CLOSED.has(s);
 
 export function printListTodosHelp() {
   process.stderr.write(`
-todoai list — list todos in a project (recent first)
+todoforai-cli list — list todos in a project (recent first)
 
 Usage:
-  todoai list [flags]
+  todoforai-cli list [flags]
 
 Flags:
   -n, --limit <n>          Max rows to show (default: 30)
@@ -47,12 +47,12 @@ Flags:
   -h, --help               Show this help
 
 Examples:
-  todoai list                         # 30 most recent open todos
-  todoai list -n 50                   # last 50 open
-  todoai list --cursor 1719234567890  # next page
-  todoai list --all                   # include DONE
-  todoai list -s RUNNING,REVIEW_REQUESTED
-  todoai list --search bug --json | jq '.items[].id'
+  todoforai-cli list                         # 30 most recent open todos
+  todoforai-cli list -n 50                   # last 50 open
+  todoforai-cli list --cursor 1719234567890  # next page
+  todoforai-cli list --all                   # include DONE
+  todoforai-cli list -s RUNNING,REVIEW_REQUESTED
+  todoforai-cli list --search bug --json | jq '.items[].id'
 `);
 }
 

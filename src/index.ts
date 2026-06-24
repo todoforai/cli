@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * TODOforAI CLI (Bun) — Create and manage todos
- * Usage: todoai "prompt text" | echo "content" | todoai [options]
+ * Usage: todoforai-cli "prompt text" | echo "content" | todoforai-cli [options]
  */
 
 import { realpathSync, readFileSync } from "fs";
@@ -142,7 +142,7 @@ async function main() {
   // per-branch below, only on paths that actually need the bridge daemon
   // (template / resume / create-todo). Read-only paths (--list-agents,
   // --inspect, --show-config, login, etc.) must not spawn it, otherwise
-  // tool-catalog probes like `todoai --version` from the bridge end up
+  // tool-catalog probes like `todoforai-cli --version` from the bridge end up
   // forking yet another bridge — feedback loop.
 
   const cfg = new ConfigStore(args["config-path"] as string);
@@ -245,7 +245,7 @@ async function main() {
   }
   if (positionals[0] === "delete") {
     const todoId = positionals[1];
-    if (!todoId) { process.stderr.write(`${RED}Usage: todoai delete <todo-id>${RESET}\n`); process.exit(2); }
+    if (!todoId) { process.stderr.write(`${RED}Usage: todoforai-cli delete <todo-id>${RESET}\n`); process.exit(2); }
     await api.deleteTodo(todoId);
     process.stderr.write(`${GREEN}✅ Deleted ${todoId}${RESET}\n`);
     return;
@@ -253,7 +253,7 @@ async function main() {
   if (positionals[0] === "addmessage") {
     const [, todoId, ...rest] = positionals;
     const content = rest.join(" ") || (await readStdin());
-    if (!todoId || !content) { process.stderr.write(`${RED}Usage: todoai addmessage <todo-id> "content"${RESET}\n`); process.exit(2); }
+    if (!todoId || !content) { process.stderr.write(`${RED}Usage: todoforai-cli addmessage <todo-id> "content"${RESET}\n`); process.exit(2); }
     const todo = await api.getTodo(todoId);
     const msg = await api.addMessage(todo.projectId, content, todo.agentSettings || { id: todo.agentSettingsId }, todoId);
     if (args.json) console.log(JSON.stringify(msg, null, 2));

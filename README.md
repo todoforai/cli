@@ -1,4 +1,4 @@
-# todoai CLI
+# todoforai-cli CLI
 
 CLI for [TODOforAI](https://todofor.ai) — create, watch, and inspect AI-powered todos.
 
@@ -10,11 +10,11 @@ bun install -g @todoforai/cli
 
 ## Setup
 
-Just run `todoai` — on first use it opens a browser for **device login** and saves the API key to `~/.todoforai/credentials.json` (shared with the edge daemon).
+Just run `todoforai-cli` — on first use it opens a browser for **device login** and saves the API key to `~/.todoforai/credentials.json` (shared with the edge daemon).
 
 ```bash
-todoai                # prompts device login if no key found
-todoai login          # explicit login
+todoforai-cli                # prompts device login if no key found
+todoforai-cli login          # explicit login
 ```
 
 API URL resolution: `--api-url` flag → `TODOFORAI_API_URL` env → `https://api.todofor.ai`.
@@ -25,7 +25,7 @@ Project, agent, and last-todo state are stored **per API URL** under `per_api_ur
 
 ## Edge daemon
 
-The CLI talks to the backend over WebSocket; **shell execution, file I/O, and tool calls happen in the edge daemon** running locally. On every run `todoai` spawns a detached edge process if none is running (PID-locked at `~/.todoforai/edge-<hash>.lock`, logs at `~/.todoforai/edge.log`). It keeps running after the CLI exits, so long-running tasks survive `Ctrl+D`.
+The CLI talks to the backend over WebSocket; **shell execution, file I/O, and tool calls happen in the edge daemon** running locally. On every run `todoforai-cli` spawns a detached edge process if none is running (PID-locked at `~/.todoforai/edge-<hash>.lock`, logs at `~/.todoforai/edge.log`). It keeps running after the CLI exits, so long-running tasks survive `Ctrl+D`.
 
 Disable with `--no-edge` if you manage the edge yourself (e.g. systemd, separate terminal).
 
@@ -34,18 +34,18 @@ Disable with `--no-edge` if you manage the edge yourself (e.g. systemd, separate
 ### Create a todo from a prompt
 
 ```bash
-todoai "Fix the login bug"
-todoai -n "Quick task"                    # non-interactive (run and exit)
-echo "content" | todoai                   # pipe from stdin
-todoai --path /my/project "Fix bug"       # explicit workspace
+todoforai-cli "Fix the login bug"
+todoforai-cli -n "Quick task"                    # non-interactive (run and exit)
+echo "content" | todoforai-cli                   # pipe from stdin
+todoforai-cli --path /my/project "Fix bug"       # explicit workspace
 ```
 
 ### Start from a registry template
 
 ```bash
-todoai --template alternativeto-listing                          # interactive input prompts
-todoai --template f5bot-monitoring-setup --input "monitoring_details=My Brand"  # with inputs
-todoai --template f5bot-monitoring-setup --no-watch --json       # create only
+todoforai-cli --template alternativeto-listing                          # interactive input prompts
+todoforai-cli --template f5bot-monitoring-setup --input "monitoring_details=My Brand"  # with inputs
+todoforai-cli --template f5bot-monitoring-setup --no-watch --json       # create only
 ```
 
 When inputs are missing, the CLI prompts interactively (unless `-n`).
@@ -53,7 +53,7 @@ When inputs are missing, the CLI prompts interactively (unless `-n`).
 ### Inspect a todo (read-only)
 
 ```bash
-todoai --inspect <todo-id>
+todoforai-cli --inspect <todo-id>
 ```
 
 Prints the full chat log: messages, tool calls (type, status, path/cmd), results, and errors. No logo, no interactive mode.
@@ -61,8 +61,8 @@ Prints the full chat log: messages, tool calls (type, status, path/cmd), results
 ### Resume / continue
 
 ```bash
-todoai -c                     # continue most recent todo
-todoai --resume <todo-id>     # resume specific todo
+todoforai-cli -c                     # continue most recent todo
+todoforai-cli --resume <todo-id>     # resume specific todo
 ```
 
 ## All Options

@@ -13,24 +13,24 @@ export function getEnv(name: string): string {
 
 export function printUsage() {
   process.stderr.write(`
-todoai — TODOforAI CLI (Bun)
+todoforai-cli — TODOforAI CLI (Bun)
 
 Usage:
-  todoai login                          # Browser-based device auth
-  todoai "prompt text"                  # Prompt as argument
-  todoai -n "Quick task"               # Non-interactive (run and exit)
-  echo "content" | todoai              # Pipe from stdin
-  todoai --path /my/project "Fix bug"  # Explicit workspace path
-  todoai -c ["prompt"]                 # Resume last todo (optional prompt sent on attach)
-  todoai --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
-  todoai --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
-  todoai --template <id> [--input k=v] # Start from a registry template
-  todoai --list-agents                 # List available agents and exit
-  todoai agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
-  todoai list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
-  todoai status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
-  todoai delete <todo-id>              # Permanently delete a todo
-  todoai addmessage <todo-id> "text"  # Add a message to an existing todo
+  todoforai-cli login                          # Browser-based device auth
+  todoforai-cli "prompt text"                  # Prompt as argument
+  todoforai-cli -n "Quick task"               # Non-interactive (run and exit)
+  echo "content" | todoforai-cli              # Pipe from stdin
+  todoforai-cli --path /my/project "Fix bug"  # Explicit workspace path
+  todoforai-cli -c ["prompt"]                 # Resume last todo (optional prompt sent on attach)
+  todoforai-cli --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
+  todoforai-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
+  todoforai-cli --template <id> [--input k=v] # Start from a registry template
+  todoforai-cli --list-agents                 # List available agents and exit
+  todoforai-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
+  todoforai-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
+  todoforai-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
+  todoforai-cli delete <todo-id>              # Permanently delete a todo
+  todoforai-cli addmessage <todo-id> "text"  # Add a message to an existing todo
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -75,7 +75,7 @@ const STATUS_HELP: Partial<Record<TodoStatus, string>> = {
 
 export function printStatusHelp() {
   process.stderr.write(`
-todoai status <todo-id> <STATUS>
+todoforai-cli status <todo-id> <STATUS>
 
 Common statuses:
 ${Object.entries(STATUS_HELP).map(([s, d]) => `  ${s.padEnd(18)}${d}`).join("\n")}
