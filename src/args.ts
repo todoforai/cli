@@ -49,7 +49,8 @@ Options:
   --allow-all                     Set permissions to allow all tools (no approval needed)
   --raw-sysmsg <file>             Use file contents verbatim as system prompt (new TODO only)
   --no-watch                      Create todo and exit
-  --no-edge                       Do not auto-spawn edge daemon
+  --no-bridge                     Do not auto-spawn bridge
+  --no-edge                       Deprecated alias for --no-bridge
   --json                          Output as JSON
   --detailed                      'inspect --json': keep ids, timestamps, agentSettingsId, scheduledTimestamp
   --format-anthropic              'inspect --json': Anthropic-style shape (tool_result in next user msg); attachment sources are uri-typed, so not a 1:1 messages.create input
@@ -106,6 +107,7 @@ export function parseCliArgs() {
       "allow-all": { type: "boolean", default: false },
       "raw-sysmsg": { type: "string" },
       "no-watch": { type: "boolean", default: false },
+      "no-bridge": { type: "boolean", default: false },
       "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       detailed: { type: "boolean", default: false },
@@ -121,5 +123,6 @@ export function parseCliArgs() {
     allowPositionals: true,
     strict: false,
   });
+  if (values["no-edge"]) values["no-bridge"] = true;
   return { values, positionals };
 }

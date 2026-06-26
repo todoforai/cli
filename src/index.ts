@@ -34,7 +34,7 @@ import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
-import { ensureEdgeRunning } from "./ensure-edge";
+import { ensureBridgeRunning } from "./ensure-bridge";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ async function main() {
   // Subcommands with their own --help handle it themselves.
   if (args.help && !["list", "ls", "agent"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
-  // ensureEdgeRunning is intentionally NOT called here — it's invoked
+  // ensureBridgeRunning is intentionally NOT called here — it's invoked
   // per-branch below, only on paths that actually need the bridge daemon
   // (template / resume / create-todo). Read-only paths (--list-agents,
   // --inspect, --show-config, login, etc.) must not spawn it, otherwise
@@ -235,7 +235,7 @@ async function main() {
 
   const api = new ApiClient(apiUrl, apiKey);
 
-  // ── todo management subcommands (read-only on the bridge; no edge spawn) ──
+  // ── todo management subcommands (read-only on the bridge; no bridge spawn) ──
   if (positionals[0] === "status") {
     const [, todoId, status] = positionals;
     if (!todoId || !status) { printStatusHelp(); process.exit(2); }
@@ -313,7 +313,7 @@ async function main() {
 
   // ── template mode ──
   if (args.template) {
-    if (!args["no-edge"] && !args["no-watch"]) ensureEdgeRunning(apiUrl, apiKey);
+    if (!args["no-bridge"] && !args["no-watch"]) ensureBridgeRunning(apiUrl, apiKey);
     const templateId = args.template as string;
     const inputValues: Record<string, string> = {};
     for (const kv of (args.input as string[] || [])) {
@@ -398,7 +398,7 @@ async function main() {
 
   // ── resume mode ──
   if (args.resume || args.continue) {
-    if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
+    if (!args["no-bridge"]) ensureBridgeRunning(apiUrl, apiKey);
     const todoId = (args.resume as string) || cfgScope.data.last_todo_id;
     if (!todoId) { process.stderr.write("Error: No recent todo found\n"); process.exit(1); }
 
@@ -489,8 +489,8 @@ async function main() {
   }
   process.stderr.write(`${DIM}Tip: ${randomTip()}${RESET}\n`);
 
-  // From here on we're creating + watching a new todo, which needs the edge.
-  if (!args["no-edge"] && !args["no-watch"]) ensureEdgeRunning(apiUrl, apiKey);
+  // From here on we're creating + watching a new todo, which needs the bridge.
+  if (!args["no-bridge"] && !args["no-watch"]) ensureBridgeRunning(apiUrl, apiKey);
 
   // ── read content ──
   let content: string;
