@@ -65,6 +65,15 @@ function bridgeWhoamiArgs(apiUrl: string): string[] {
   return withProfile(["whoami"], apiUrl);
 }
 
+/** Local bridge device id for this apiUrl's profile, or null if not logged in.
+ *  Parses `todoforai-bridge whoami` ("Device: <name> (id: <uuid>)"). */
+export function bridgeDeviceId(apiUrl: string): string | null {
+  const r = spawnSync("todoforai-bridge", bridgeWhoamiArgs(apiUrl), { encoding: "utf-8" });
+  if (r.status !== 0) return null;
+  const m = (r.stdout || "").match(/^Device:.*\(id:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/im);
+  return m ? m[1] : null;
+}
+
 function ensureBridgeCredentials(apiUrl: string): boolean {
   const whoami = spawnSync("todoforai-bridge", bridgeWhoamiArgs(apiUrl), { stdio: "ignore" });
   if (whoami.status === 0) return true;
