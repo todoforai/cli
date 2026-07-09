@@ -85,6 +85,15 @@ function ensureBridgeCredentials(apiUrl: string): boolean {
   return login.status === 0;
 }
 
+function lastLogLine(logFile: string): string | null {
+  try {
+    const lines = fs.readFileSync(logFile, "utf-8").split("\n").filter(Boolean);
+    return lines.length ? lines[lines.length - 1] : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
   if (!hasBridge()) {
     console.error("\x1b[2mBridge not started: `todoforai-bridge` was not found on PATH. Install TODOforAI Bridge, or pass --no-bridge (or deprecated --no-edge) to silence this.\x1b[0m");
@@ -125,7 +134,8 @@ export function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
     if (exitCode === 0) {
       console.error(`\x1b[2mBridge exited cleanly. Logs: ${shortLog}\x1b[0m`);
     } else {
-      console.error(`\x1b[33mBridge exited early (exit ${exitCode}). Check logs: ${shortLog}. Another instance may already be running.\x1b[0m`);
+      const reason = lastLogLine(logFile);
+      console.error(`\x1b[33mBridge exited early (exit ${exitCode}): ${reason ?? `check logs: ${shortLog}`}\x1b[0m`);
     }
   }, 500);
 }
