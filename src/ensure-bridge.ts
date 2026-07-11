@@ -85,9 +85,16 @@ function ensureBridgeCredentials(apiUrl: string): boolean {
   return login.status === 0;
 }
 
-function lastLogLine(logFile: string): string | null {
+/** Last log line written after `fromOffset` — i.e. by the child we just spawned. */
+function lastLogLineSince(logFile: string, fromOffset: number): string | null {
   try {
-    const lines = fs.readFileSync(logFile, "utf-8").split("\n").filter(Boolean);
+    const fd = fs.openSync(logFile, "r");
+    const size = fs.fstatSync(fd).size;
+    if (size <= fromOffset) { fs.closeSync(fd); return null; }
+    const buf = Buffer.alloc(size - fromOffset);
+    fs.readSync(fd, buf, 0, buf.length, fromOffset);
+    fs.closeSync(fd);
+    const lines = buf.toString("utf-8").split("\n").filter(Boolean);
     return lines.length ? lines[lines.length - 1] : null;
   } catch {
     return null;
@@ -108,6 +115,7 @@ export function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
   const logDir = path.join(os.homedir(), ".todoforai");
   fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, "bridge.log");
+  const logOffset = fs.existsSync(logFile) ? fs.statSync(logFile).size : 0;
   const out = fs.openSync(logFile, "a");
 
   const child = spawn("todoforai-bridge", bridgeRunArgs(apiUrl), {
@@ -134,7 +142,7 @@ export function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
     if (exitCode === 0) {
       console.error(`\x1b[2mBridge exited cleanly. Logs: ${shortLog}\x1b[0m`);
     } else {
-      const reason = lastLogLine(logFile);
+      const reason = lastLogLineSince(logFile, logOffset);
       console.error(`\x1b[33mBridge exited early (exit ${exitCode}): ${reason ?? `check logs: ${shortLog}`}\x1b[0m`);
     }
   }, 500);
