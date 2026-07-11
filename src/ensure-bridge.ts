@@ -86,11 +86,20 @@ function ensureBridgeCredentials(apiUrl: string): boolean {
 }
 
 
+function bridgeAlreadyRunning(): boolean {
+  if (process.platform === "win32") return false;
+  const r = spawnSync("pgrep", ["-f", "todoforai-bridge"], { encoding: "utf-8" });
+  // Exclude our own pgrep/login invocations: any surviving pid means a daemon runs.
+  return r.status === 0 && (r.stdout || "").trim().length > 0;
+}
+
 export function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
   if (!hasBridge()) {
     console.error("\x1b[2mBridge not started: `todoforai-bridge` was not found on PATH. Install TODOforAI Bridge, or pass --no-bridge (or deprecated --no-edge) to silence this.\x1b[0m");
     return;
   }
+
+  if (bridgeAlreadyRunning()) return; // normal case: daemon already up — stay quiet
 
   if (!ensureBridgeCredentials(apiUrl)) {
     console.error("\x1b[33mBridge not started: `todoforai-bridge login` did not complete successfully.\x1b[0m");
@@ -118,7 +127,8 @@ export function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
   if (!child.pid) return;
   const shortLog = logFile.replace(os.homedir(), "~");
   setTimeout(() => {
-    // Success (still running) or clean exit (another instance already runs) — stay quiet.
+    // We only spawned because no daemon was running, so an early death is a
+    // real failure (e.g. stale credentials) — worth one dim line.
     if (exited && exitCode !== 0) {
       console.error(`\x1b[2mBridge not running (exit ${exitCode}), see ${shortLog}\x1b[0m`);
     }
