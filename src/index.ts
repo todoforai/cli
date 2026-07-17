@@ -261,6 +261,40 @@ async function main() {
     return;
   }
 
+  if (positionals[0] === "recommend") {
+    // Reference an existing registry template as a NEXT-column card on a project.
+    // Templates are created by `todoregistry-cli create` (which prints the id).
+    const templateId = (args.template as string) || positionals[1];
+    if (!templateId) {
+      process.stderr.write(`${RED}Usage: todoforai-cli recommend --template <id> [--note "why"] [--priority high|medium|low] [--title "..."] [--project <id>]${RESET}\n`);
+      process.stderr.write(`${DIM}Create a template first with: todoregistry-cli create --name ... --description ... --body @prompt.md${RESET}\n`);
+      process.exit(2);
+    }
+    let projectId = (args.project as string) || cfgScope.data.default_project_id;
+    if (!projectId) {
+      const projects = await api.listProjects();
+      projectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
+    }
+    if (!projectId) { process.stderr.write(`${RED}No project found — pass --project <id>${RESET}\n`); process.exit(2); }
+
+    const priority = args.priority as ("high" | "medium" | "low" | undefined);
+    if (priority && !["high", "medium", "low"].includes(priority)) {
+      process.stderr.write(`${RED}--priority must be high, medium, or low${RESET}\n`);
+      process.exit(2);
+    }
+    const rec = await api.recommend({
+      projectId,
+      templateId,
+      ...(args.title ? { title: args.title as string } : {}),
+      ...(args.note ? { note: args.note as string } : {}),
+      ...(priority ? { priority } : {}),
+      ...(args["business-context"] ? { businessContextId: args["business-context"] as string } : {}),
+    });
+    if (args.json) console.log(JSON.stringify(rec, null, 2));
+    else process.stderr.write(`${GREEN}✅ Recommended template ${templateId} on project ${projectId}${RESET}\n`);
+    return;
+  }
+
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
 
   if (positionals[0] === "agent") { await agentCommand(api, positionals, args, formatPathWithTilde); return; }

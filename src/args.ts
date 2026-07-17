@@ -31,6 +31,7 @@ Usage:
   todoforai-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
   todoforai-cli delete <todo-id>              # Permanently delete a todo
   todoforai-cli addmessage <todo-id> "text"  # Add a message to an existing todo
+  todoforai-cli recommend --template <id>    # Add a template as a NEXT-column card (see 'todoregistry-cli create')
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -100,6 +101,10 @@ export function parseCliArgs() {
       inspect: { type: "string", short: "i" },
       template: { type: "string", short: "t" },
       input: { type: "string", multiple: true },
+      note: { type: "string" },
+      priority: { type: "string" },
+      title: { type: "string" },
+      "business-context": { type: "string" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
       "non-interactive": { type: "boolean", short: "n", default: false },
