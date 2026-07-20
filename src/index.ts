@@ -164,6 +164,14 @@ async function main() {
     (args["api-url"] as string) || getEnv("API_URL") || DEFAULT_API_URL,
   );
   const cfgScope = cfg.scope(apiUrl);
+  if (args["user-id"]) {
+    const url = new URL(apiUrl);
+    const loopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
+    if (url.protocol !== "http:" || !loopback) {
+      process.stderr.write("Error: --user-id is restricted to HTTP loopback URLs\n");
+      process.exit(2);
+    }
+  }
 
   // ── device login ──
   async function deviceLogin(): Promise<string> {
@@ -233,7 +241,20 @@ async function main() {
     apiKey = await deviceLogin();
   }
 
-  const api = new ApiClient(apiUrl, apiKey);
+  const api = new ApiClient(apiUrl, apiKey, args["user-id"] as string | undefined);
+
+  if (args["user-id"] && args.safe) {
+    process.stderr.write("Error: --safe is not supported with --user-id\n");
+    process.exit(2);
+  }
+  if (args["user-id"] && (args.resume || args.continue)) {
+    process.stderr.write("Error: resume is not supported with --user-id\n");
+    process.exit(2);
+  }
+  if (args["user-id"] && args.template && !args["no-watch"]) {
+    process.stderr.write("Error: --user-id uses admin HTTP impersonation and requires --no-watch\n");
+    process.exit(2);
+  }
 
   // ── todo management subcommands (read-only on the bridge; no bridge spawn) ──
   if (positionals[0] === "status") {
@@ -468,6 +489,11 @@ async function main() {
     }
     await ws.close();
     return;
+  }
+
+  if (args["user-id"] && !args["no-watch"]) {
+    process.stderr.write("Error: --user-id uses admin HTTP impersonation and requires --no-watch\n");
+    process.exit(2);
   }
 
   // ── pre-resolve agent by --agent name or --path ──

@@ -40,6 +40,7 @@ Options:
   --list-agents                   List available agents (name, id, workspace paths) and exit
   --api-url <url>                 API URL
   --api-key <key>                 API key
+  --user-id <id>                  Admin HTTP impersonation; requires --no-watch
   --inspect, -i <todo-id>[@<slice>]     Print chat log (read-only)
   --template, -t <id>            Start from a registry template
   --input <key=value>            Template input (repeatable)
@@ -98,6 +99,7 @@ export function parseCliArgs() {
       "list-agents": { type: "boolean", default: false },
       "api-url": { type: "string" },
       "api-key": { type: "string" },
+      "user-id": { type: "string" },
       inspect: { type: "string", short: "i" },
       template: { type: "string", short: "t" },
       input: { type: "string", multiple: true },
