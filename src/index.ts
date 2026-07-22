@@ -228,10 +228,10 @@ async function main() {
   }
 
   // ── resolve API client ──
-  // Priority: CLI flag > shared credentials.json (URL-keyed, backend-correct) >
-  // env token (TODOFORAI_API_TOKEN, URL-blind) > device-login. credentials.json is
-  // keyed by apiUrl so it always matches --api-url; the env token is injected by the
-  // edge shell for its own backend, so it only fits when no URL-keyed entry exists.
+  // Priority: CLI flag > shared credentials.json > env token
+  // (TODOFORAI_API_TOKEN, URL-blind) > device-login. readCredential resolves the
+  // URL-keyed entry first, then the top-level apiToken bridge field the edge/login
+  // writes, so a bridge-only credentials.json authenticates without a re-login.
   let apiKey = (args["api-key"] as string)
     || readCredential(apiUrl)
     || getEnv("API_TOKEN")
