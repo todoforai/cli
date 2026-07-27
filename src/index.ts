@@ -496,6 +496,13 @@ async function main() {
     process.exit(2);
   }
 
+  // ── start independent work early: WS connect + bridge check run in
+  // parallel with the agent/project fetches below ──
+  const ws = args["no-watch"] ? null : new FrontendWebSocket(apiUrl, apiKey);
+  const wsReady = ws ? ws.connect() : null;
+  // Creating + watching a new todo needs the bridge; fire-and-forget.
+  if (!args["no-bridge"] && !args["no-watch"]) void ensureBridgeRunning(apiUrl, apiKey);
+
   // ── pre-resolve agent by --agent name or --path ──
   let preMatchedAgent: any = null;
   let agents: any[] | null = null;
@@ -548,9 +555,6 @@ async function main() {
     );
   }
   process.stderr.write(`${DIM}Tip: ${randomTip()}${RESET}\n`);
-
-  // From here on we're creating + watching a new todo, which needs the bridge.
-  if (!args["no-bridge"] && !args["no-watch"]) ensureBridgeRunning(apiUrl, apiKey);
 
   // ── read content ──
   let content: string;
@@ -608,9 +612,8 @@ async function main() {
     );
   }
 
-  // ── connect WS before creating todo to avoid missing early events ──
-  const ws = args["no-watch"] ? null : new FrontendWebSocket(apiUrl, apiKey);
-  if (ws) await ws.connect();
+  // ── WS must be connected before creating the todo to avoid missing early events ──
+  if (wsReady) await wsReady;
 
   // ── create todo ──
   if (args.model) agent = { ...agent, model: args.model };
