@@ -13,11 +13,10 @@ const LETTERS: Record<string, string[]> = {
   e: ["    ", "xxxx", "x  x", "xxxx", "xlll", "xxxx"],
   a: ["    ", "xxxx", "   x", "xxxx", "xllx", "xxxx"],
   i: ["x", " ", "x", "x", "x", "x"],
-  "4": ["    ", "  x ", " xx ", "xlxl", "xxxx", "llxl"],
 };
 
 const GAP = " ";
-const WORD = "todo4ai";
+const WORD = "todoforai";
 
 function renderHalfBlock(top: string, bot: string): string {
   const W = c("\x1b[38;2;249;110;46m"); // brand orange fg (#f96e2e)
