@@ -34,6 +34,7 @@ import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
+import { steeringCommand } from "./steering-command";
 import { ensureBridgeRunning } from "./ensure-bridge";
 
 // ── helpers ──────────────────────────────────────────────────────────
@@ -313,6 +314,64 @@ async function main() {
     });
     if (args.json) console.log(JSON.stringify(rec, null, 2));
     else process.stderr.write(`${GREEN}✅ Recommended template ${templateId} on project ${projectId}${RESET}\n`);
+    return;
+  }
+
+  if (positionals[0] === "claim" && positionals[1] === "mint") {
+    // Mint single-use /claim/<token> links that fork a project you own into a
+    // fresh anonymous account per recipient. `--seed` (or --project/default).
+    let seedProjectId = (args.seed as string) || (args.project as string) || cfgScope.data.default_project_id;
+    if (!seedProjectId) {
+      const projects = await api.listProjects();
+      seedProjectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
+    }
+    if (!seedProjectId) { process.stderr.write(`${RED}Usage: todoforai-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]${RESET}\n`); process.exit(2); }
+    const emails = (args.emails as string | undefined)?.split(",").map((e) => e.trim()).filter(Boolean);
+    let ttlSec: number | undefined;
+    if (args.ttl !== undefined) {
+      ttlSec = Number(args.ttl);
+      if (!Number.isFinite(ttlSec)) { process.stderr.write(`${RED}--ttl must be a number (seconds)${RESET}\n`); process.exit(2); }
+    }
+    const res = await fetch(`${apiUrl}/api/v1/claims/mint`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify({ seedProjectId, ...(emails?.length ? { emails } : {}), ...(ttlSec !== undefined ? { ttlSec } : {}) }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const text = await res.text();
+    if (!res.ok) { process.stderr.write(`${RED}Mint failed: ${res.status} ${text}${RESET}\n`); process.exit(1); }
+    const out = JSON.parse(text);
+    if (args.json) console.log(JSON.stringify(out, null, 2));
+    else for (const l of out.links) process.stdout.write(`${l.email ? `${l.email}\t` : ""}${CYAN}${l.url}${RESET}\n`);
+    return;
+  }
+
+  if (positionals[0] === "steering" || positionals[0] === "next") {
+    let projectId = (args.project as string) || cfgScope.data.default_project_id;
+    if (!projectId) {
+      const projects = await api.listProjects();
+      projectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
+    }
+    if (!projectId) { process.stderr.write(`${RED}No project found — pass --project <id>${RESET}\n`); process.exit(2); }
+    const sctx = { apiUrl, apiKey, projectId, json: !!args.json };
+
+    if (positionals[0] === "next") {
+      // Trigger a steered generation run (Business Analyzer → NEXT-column cards).
+      const res = await fetch(`${apiUrl}/api/v1/projects/${projectId}/recommendations/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({ projectId, ...(args["business-context"] ? { businessContextId: args["business-context"] } : {}) }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const text = await res.text();
+      if (!res.ok) { process.stderr.write(`${RED}Generate failed: ${res.status} ${text}${RESET}\n`); process.exit(1); }
+      const out = JSON.parse(text);
+      if (args.json) console.log(JSON.stringify(out, null, 2));
+      else process.stderr.write(`${GREEN}✅ Generating recommendations — analyzer todo ${out.todoId}${RESET}\n`);
+      return;
+    }
+
+    await steeringCommand(sctx, positionals.slice(1));
     return;
   }
 

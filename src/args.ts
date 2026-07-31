@@ -32,6 +32,11 @@ Usage:
   todoforai-cli delete <todo-id>              # Permanently delete a todo
   todoforai-cli addmessage <todo-id> "text"  # Add a message to an existing todo
   todoforai-cli recommend --template <id>    # Add a template as a NEXT-column card (see 'todoregistry-cli create')
+  todoforai-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> ownership links for a project you own
+  todoforai-cli steering get                 # Show recommendation steering (direction + boosted/muted categories)
+  todoforai-cli steering direction "<text>"  # Set the direction the generator should follow
+  todoforai-cli steering boost|mute <cat>    # Favour / avoid a category
+  todoforai-cli next                         # Generate steered NEXT-column recommendations
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -107,6 +112,9 @@ export function parseCliArgs() {
       priority: { type: "string" },
       title: { type: "string" },
       "business-context": { type: "string" },
+      seed: { type: "string" },
+      emails: { type: "string" },
+      ttl: { type: "string" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
       "non-interactive": { type: "boolean", short: "n", default: false },
