@@ -483,6 +483,9 @@ async function main() {
 
     if (args.json) {
       console.log(JSON.stringify({ ...todo, frontend_url: frontendUrl }, null, 2));
+    } else if (args["no-watch"]) {
+      // --no-watch: this is the whole output — confirm start on stdout for machine callers
+      console.log(`started ${todoId} ${frontendUrl}`);
     } else {
       process.stderr.write(`${DIM}TODO:${RESET} ${CYAN}${frontendUrl}${RESET}\n`);
     }
@@ -701,6 +704,9 @@ async function main() {
 
   if (args.json) {
     console.log(JSON.stringify({ ...todo, frontend_url: frontendUrl }, null, 2));
+  } else if (!ws) {
+    // --no-watch: this is the whole output — confirm start on stdout for machine callers
+    console.log(`started ${actualTodoId} ${frontendUrl}`);
   } else {
     process.stderr.write(`${DIM}TODO:${RESET} ${CYAN}${frontendUrl}${RESET}\n`);
   }
