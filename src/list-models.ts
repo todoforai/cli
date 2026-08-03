@@ -15,7 +15,9 @@ export async function listModelsCommand(
   const res: any = await api.listModels();
   const q = opts.filter?.toLowerCase();
   const ids: string[] = (res?.data || [])
-    .map((m: any) => `${String(m.id).split("/")[0]}:${m.id}`)
+    // Agent settings expect `provider:openrouter-id`; ids without a provider
+    // segment (e.g. local models) can't be expressed that way — emit as-is.
+    .map((m: any) => (String(m.id).includes("/") ? `${String(m.id).split("/")[0]}:${m.id}` : String(m.id)))
     .filter((id: string) => !q || id.toLowerCase().includes(q));
 
   if (opts.json) { console.log(JSON.stringify(ids, null, 2)); return; }

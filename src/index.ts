@@ -234,9 +234,14 @@ async function main() {
   // (TODOFORAI_API_TOKEN, URL-blind) > device-login. readCredential resolves the
   // URL-keyed entry first, then the top-level apiToken bridge field the edge/login
   // writes, so a bridge-only credentials.json authenticates without a re-login.
+  // dst_… device-session tokens (the edge injects one as TODOFORAI_API_TOKEN into
+  // every shell child, and the bridge stores one as apiToken) only authenticate
+  // on /dst/v1 — this CLI calls /api/v1, where they always 401. Skip them so we
+  // fall through to device-login instead of dying on a structurally wrong token.
+  const notDst = (t: string) => (t.startsWith("dst_") ? "" : t);
   let apiKey = (args["api-key"] as string)
-    || readCredential(apiUrl)
-    || getEnv("API_TOKEN")
+    || notDst(readCredential(apiUrl))
+    || notDst(getEnv("API_TOKEN"))
     || "";
 
   if (!apiKey) {
