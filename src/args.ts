@@ -26,6 +26,7 @@ Usage:
   todoforai-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
   todoforai-cli --template <id> [--input k=v] # Start from a registry template
   todoforai-cli --list-agents                 # List available agents and exit
+  todoforai-cli --list-models [filter]        # List models usable with --model and exit
   todoforai-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
   todoforai-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
   todoforai-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
@@ -42,7 +43,10 @@ Options:
   --path <dir>                    Workspace path (default: cwd)
   --project <id>                  Project ID
   --agent, -a <name>              Agent name (partial match)
+  --model <model>                 Override the agent's model for this todo
+                                  (e.g. anthropic:anthropic/claude-opus-5, openai:openai/gpt-5.6-sol)
   --list-agents                   List available agents (name, id, workspace paths) and exit
+  --list-models                   List models usable with --model (optional substring filter) and exit
   --api-url <url>                 API URL
   --api-key <key>                 API key
   --user-id <id>                  Admin HTTP impersonation; requires --no-watch
@@ -102,6 +106,7 @@ export function parseCliArgs() {
       agent: { type: "string", short: "a" },
       model: { type: "string" },
       "list-agents": { type: "boolean", default: false },
+      "list-models": { type: "boolean", default: false },
       "api-url": { type: "string" },
       "api-key": { type: "string" },
       "user-id": { type: "string" },

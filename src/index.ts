@@ -32,6 +32,7 @@ import { printFullChat, applySlice, toAnthropicShape, type InspectMode, type Ins
 import { selectProject, selectAgent, getDisplayName, getItemId, resolveAgentMatch } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
+import { listModelsCommand } from "./list-models";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { steeringCommand } from "./steering-command";
@@ -141,7 +142,7 @@ async function main() {
 
   // ensureBridgeRunning is intentionally NOT called here — it's invoked
   // per-branch below, only on paths that actually need the bridge daemon
-  // (template / resume / create-todo). Read-only paths (--list-agents,
+  // (template / resume / create-todo). Read-only paths (--list-agents, --list-models,
   // --inspect, --show-config, login, etc.) must not spawn it, otherwise
   // tool-catalog probes like `todoforai-cli --version` from the bridge end up
   // forking yet another bridge — feedback loop.
@@ -376,6 +377,8 @@ async function main() {
   }
 
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
+
+  if (args["list-models"]) { await listModelsCommand(api, { json: !!args.json, filter: positionals[0] }); return; }
 
   if (positionals[0] === "agent") { await agentCommand(api, positionals, args, formatPathWithTilde); return; }
 
