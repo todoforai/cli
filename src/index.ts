@@ -17,12 +17,12 @@ try {
   const pkgPath = path.resolve(fileURLToPath(import.meta.url), "../../package.json");
   checkForUpdates(JSON.parse(readFileSync(pkgPath, "utf-8")));
 } catch {}
-import { ApiClient, type RegistryTemplate, type RegistryTemplateInput } from "@todoforai/edge/src/api";
+import { ApiClient, type RegistrySpec } from "@todoforai/edge/src/api";
 import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
 import { normalizeApiUrl } from "@todoforai/edge/src/config";
 
 import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCliArgs } from "./args";
-import { readLine, readMultiline, readStdin } from "./input";
+import { readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
 import { readCredential, writeCredential } from "./credentials";
@@ -312,7 +312,7 @@ async function main() {
     }
     const rec = await api.recommend({
       projectId,
-      templateId,
+      specId: templateId,
       ...(args.title ? { title: args.title as string } : {}),
       ...(args.note ? { note: args.note as string } : {}),
       ...(priority ? { priority } : {}),
@@ -437,33 +437,11 @@ async function main() {
   if (args.template) {
     if (!args["no-bridge"] && !args["no-watch"]) ensureBridgeRunning(apiUrl, apiKey);
     const templateId = args.template as string;
-    const inputValues: Record<string, string> = {};
-    for (const kv of (args.input as string[] || [])) {
-      const eq = kv.indexOf("=");
-      if (eq > 0) inputValues[kv.slice(0, eq)] = kv.slice(eq + 1);
-    }
 
-    // Fetch template to show info and prompt for missing inputs
-    const template: RegistryTemplate = await api.getRegistryTemplate(templateId);
-    process.stderr.write(`${DIM}Template:${RESET} ${BRAND}${template.todoname}${RESET}\n`);
-    if (template.description) process.stderr.write(`${DIM}${template.description}${RESET}\n`);
-
-    // Prompt for missing inputs (interactive only)
-    const templateInputs: RegistryTemplateInput[] = template.inputs || [];
-    if (templateInputs.length && !args["non-interactive"]) {
-      for (const inp of templateInputs) {
-        const key = inp.label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
-        if (inputValues[key]) continue;
-        const req = inp.required ? ` ${RED}*${RESET}` : "";
-        const hint = inp.placeholder ? ` ${DIM}(${inp.placeholder.split("\n")[0]})${RESET}` : "";
-        const val = await readLine(`${inp.label}${req}${hint}: `);
-        if (val) inputValues[key] = val;
-      }
-    }
-
-    if (Object.keys(inputValues).length) {
-      process.stderr.write(`${DIM}Inputs:${RESET} ${JSON.stringify(inputValues)}\n`);
-    }
+    // Fetch spec to show info
+    const spec: RegistrySpec = await api.getRegistrySpec(templateId);
+    process.stderr.write(`${DIM}Template:${RESET} ${BRAND}${spec.name}${RESET}\n`);
+    if (spec.description) process.stderr.write(`${DIM}${spec.description}${RESET}\n`);
 
     // Resolve project
     const projects = await api.listProjects();
@@ -475,7 +453,7 @@ async function main() {
     }
     if (!projectId) { process.stderr.write("Error: No project found\n"); process.exit(1); }
 
-    const todo = await api.startFromTemplate(projectId, templateId, { inputValues });
+    const todo = await api.startFromSpec(projectId, templateId);
     const todoId = todo.id;
     cfgScope.setLastTodoId(todoId);
 

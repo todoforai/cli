@@ -18,7 +18,7 @@ todo-registry categories                    # list all categories
 ## Implementation
 
 - Bun + commander (same pattern as `api-apps/apollo-api`)
-- Uses `ApiClient.listRegistryTemplates()` and `ApiClient.getRegistryTemplate()` from `@todoforai/edge`
+- Uses `ApiClient.listRegistrySpecs()` and `ApiClient.getRegistrySpec()` from `@todoforai/edge`
 - Or direct fetch to `/cookie/v1/registry/templates` (no auth needed)
 - Lives in `api-apps/todo-registry-cli/` or as a subcommand of `todoai`
 

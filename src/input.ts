@@ -1,17 +1,7 @@
-/** Terminal input helpers — line reading, raw-mode multiline with bracketed paste */
+/** Terminal input helpers — raw-mode multiline with bracketed paste */
 
-import { createInterface } from "readline";
 import { BRIGHT_WHITE, RESET } from "./colors";
 
-export function readLine(prompt: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  return new Promise((res) => {
-    rl.question(prompt, (ans) => {
-      rl.close();
-      res(ans.trim());
-    });
-  });
-}
 
 /** Raw-mode prompt with bracketed paste: multiline paste preserved, Enter submits.
  *  Returns { promise, cancel } — call cancel() to abort the prompt externally. */
