@@ -18,7 +18,7 @@ Usage:
 <agent> is a name or id (unique partial name also works).
 Fields map directly to agent settings; values are parsed as JSON when possible
 (numbers, booleans), otherwise treated as strings. Common fields:
-  model           e.g. claude  |  anthropic:anthropic/claude-opus-4.8
+  model           e.g. claude  |  anthropic:anthropic/claude-opus-5
                   ('claude' is the rolling alias → latest Claude Opus)
   systemMessage   freeform prompt text (alias: sysmsg)
   temperature     number, e.g. 0.7
@@ -27,7 +27,7 @@ Fields map directly to agent settings; values are parsed as JSON when possible
 
 Examples:
   todoforai-cli agent update <agent> model=claude
-  todoforai-cli agent update <agent> model=anthropic:anthropic/claude-opus-4.8 temperature=0.5
+  todoforai-cli agent update <agent> model=anthropic:anthropic/claude-opus-5 temperature=0.5
   todoforai-cli agent update <agent> sysmsg="You are a terse video editor."
 `);
 }
