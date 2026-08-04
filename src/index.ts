@@ -299,7 +299,7 @@ async function main() {
   }
 
   if (positionals[0] === "recommend") {
-    // Reference an existing registry template as a NEXT-column card on a project.
+    // Reference an existing registry template as a recommendation card on a project.
     // Templates are created by `todoregistry-cli create` (which prints the id).
     const templateId = (args.template as string) || positionals[1];
     if (!templateId) {
@@ -371,7 +371,7 @@ async function main() {
     const sctx = { apiUrl, apiKey, projectId, json: !!args.json };
 
     if (positionals[0] === "next") {
-      // Trigger a steered generation run (Business Analyzer → NEXT-column cards).
+      // Trigger a steered generation run (Business Analyzer → recommendation cards).
       const res = await fetch(`${apiUrl}/api/v1/projects/${projectId}/recommendations/generate`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-api-key": apiKey },
