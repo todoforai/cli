@@ -24,7 +24,7 @@ Usage:
   todoforai-cli -c ["prompt"]                 # Resume last todo (optional prompt sent on attach)
   todoforai-cli --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
   todoforai-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
-  todoforai-cli --template <id>              # Start from a registry template
+  todoforai-cli start <id>                    # Start a TODO from the registry (todoregistry.com)
   todoforai-cli --list-agents                 # List available agents and exit
   todoforai-cli --list-models [filter]        # List models usable with --model and exit
   todoforai-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
@@ -51,7 +51,7 @@ Options:
   --api-key <key>                 API key
   --user-id <id>                  Admin HTTP impersonation; requires --no-watch
   --inspect, -i <todo-id>[@<slice>]     Print chat log (read-only)
-  --template, -t <id>            Start from a registry template
+  --template, -t <id>            Start from a registry template (alias: start <id>)
   --resume, -r [todo-id]          Resume existing todo
   --continue, -c                  Continue most recent todo
   --non-interactive, -n           Run to completion and exit without interactive prompt

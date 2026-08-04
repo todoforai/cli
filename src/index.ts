@@ -133,6 +133,15 @@ async function main() {
 
   const { values: args, positionals } = parseCliArgs();
 
+  // `start <id>` is sugar for `--template <id>`
+  if (positionals[0] === "start") {
+    if (!positionals[1] && !args.template) {
+      process.stderr.write(`${RED}Usage: todoforai-cli start <todo-id>${RESET}\n`);
+      process.exit(2);
+    }
+    if (!args.template) args.template = positionals[1];
+  }
+
   if (args.version) { console.log(VERSION); process.exit(0); }
   if (positionals[0] === "status" && args.help) { printStatusHelp(); process.exit(0); }
   if (positionals[0] === "agent" && args.help) { printAgentHelp(); process.exit(0); }
