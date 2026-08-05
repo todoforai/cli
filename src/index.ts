@@ -695,13 +695,19 @@ async function main() {
     if (args.project) process.exit(1);
     cfgScope.data.default_project_id = null;
     cfgScope.data.default_project_name = null;
-    const sel = await selectProject(
-      await api.listProjects(),
-      null,
-      (id, name) => cfgScope.setDefaultProject(id, name),
-    );
-    projectId = sel.id;
-    projectName = sel.name;
+    const fresh = await api.listProjects();
+    if (process.stdin.isTTY) {
+      const sel = await selectProject(fresh, null, (id, name) => cfgScope.setDefaultProject(id, name));
+      projectId = sel.id;
+      projectName = sel.name;
+    } else {
+      const pick = fresh.find((p: any) => p.project?.isDefault) || fresh[0];
+      if (!pick) { process.stderr.write(`${RED}No projects available${RESET}\n`); process.exit(1); }
+      projectId = getItemId(pick);
+      projectName = getDisplayName(pick);
+      cfgScope.setDefaultProject(projectId, projectName);
+      process.stderr.write(`Using project: ${projectName}\n`);
+    }
     todo = await api.addMessage(projectId, content, agent);
   }
   const actualTodoId = todo.id || crypto.randomUUID();
