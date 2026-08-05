@@ -688,27 +688,13 @@ async function main() {
   try {
     todo = await api.addMessage(projectId, content, agent);
   } catch (e: any) {
-    // Cached default project may belong to another account or be deleted —
-    // drop it, re-select from the account's real project list, and retry once.
-    if (!/failed: 403/.test(e.message || "")) throw e;
-    process.stderr.write(`${RED}Not authorized for project ${projectName} (${projectId}) — it may belong to another account or have been deleted.${RESET}\n`);
-    if (args.project) process.exit(1);
-    cfgScope.data.default_project_id = null;
-    cfgScope.data.default_project_name = null;
-    const fresh = await api.listProjects();
-    if (process.stdin.isTTY) {
-      const sel = await selectProject(fresh, null, (id, name) => cfgScope.setDefaultProject(id, name));
-      projectId = sel.id;
-      projectName = sel.name;
-    } else {
-      const pick = fresh.find((p: any) => p.project?.isDefault) || fresh[0];
-      if (!pick) { process.stderr.write(`${RED}No projects available${RESET}\n`); process.exit(1); }
-      projectId = getItemId(pick);
-      projectName = getDisplayName(pick);
-      cfgScope.setDefaultProject(projectId, projectName);
-      process.stderr.write(`Using project: ${projectName}\n`);
+    // Cached default project may belong to another account or be deleted.
+    if (!args.project && cfgScope.data.default_project_id === projectId && /failed: 403/.test(e.message || "")) {
+      cfgScope.clearDefaultProject();
+      process.stderr.write(`${RED}Not authorized for cached default project ${projectName} (${projectId}) — cleared it. Re-run to pick a project.${RESET}\n`);
+      process.exit(1);
     }
-    todo = await api.addMessage(projectId, content, agent);
+    throw e;
   }
   const actualTodoId = todo.id || crypto.randomUUID();
   cfgScope.setLastTodoId(actualTodoId);

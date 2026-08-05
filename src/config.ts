@@ -145,6 +145,13 @@ export class ScopedConfig {
     return this.store.data.per_api_url[this.apiUrl];
   }
 
+  clearDefaultProject(): void {
+    const s = this.data;
+    s.default_project_id = null;
+    s.default_project_name = null;
+    this.store.save();
+  }
+
   setDefaultProject(id: string, name?: string): void {
     const s = this.data;
     s.default_project_id = id;
