@@ -3,10 +3,10 @@
   "version": "0.1.3",
   "type": "module",
   "bin": {
-    "todoforai-cli": "dist/todoai.js",
-    "todoai": "dist/todoai.js"
+    "todoforai-cli": "bin/todoforai-cli.js",
+    "todoai": "bin/todoforai-cli.js"
   },
-  "files": ["dist/todoai.js"],
+  "files": ["bin", "dist/todoai.js"],
   "scripts": {
     "build": "bun build src/index.ts --target=bun --outfile dist/todoai.js --external ws",
     "prepublishOnly": "bun run build",
