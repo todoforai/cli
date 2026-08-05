@@ -452,11 +452,12 @@ async function main() {
     process.stderr.write(`${DIM}Template:${RESET} ${BRAND}${spec.name}${RESET}\n`);
     if (spec.description) process.stderr.write(`${DIM}${spec.description}${RESET}\n`);
 
-    // Resolve project
+    // Resolve project — ignore a cached default the account can no longer access
     const projects = await api.listProjects();
     let projectId = args.project as string;
     if (!projectId) {
-      projectId = cfgScope.data.default_project_id
+      const cached = cfgScope.data.default_project_id;
+      projectId = (cached && projects.some((p: any) => getItemId(p) === cached) ? cached : null)
         || projects.find((p: any) => p.project?.isDefault)?.project?.id
         || projects[0]?.project?.id;
     }
@@ -683,7 +684,26 @@ async function main() {
     agent = { ...agent, permissions: { ...perms, allow: [...(perms.allow || []), "*:*"] } };
   }
   cfg.addToHistory(content);
-  const todo = await api.addMessage(projectId, content, agent);
+  let todo: any;
+  try {
+    todo = await api.addMessage(projectId, content, agent);
+  } catch (e: any) {
+    // Cached default project may belong to another account or be deleted —
+    // drop it, re-select from the account's real project list, and retry once.
+    if (!/failed: 403/.test(e.message || "")) throw e;
+    process.stderr.write(`${RED}Not authorized for project ${projectName} (${projectId}) — it may belong to another account or have been deleted.${RESET}\n`);
+    if (args.project) process.exit(1);
+    cfgScope.data.default_project_id = null;
+    cfgScope.data.default_project_name = null;
+    const sel = await selectProject(
+      await api.listProjects(),
+      null,
+      (id, name) => cfgScope.setDefaultProject(id, name),
+    );
+    projectId = sel.id;
+    projectName = sel.name;
+    todo = await api.addMessage(projectId, content, agent);
+  }
   const actualTodoId = todo.id || crypto.randomUUID();
   cfgScope.setLastTodoId(actualTodoId);
 
