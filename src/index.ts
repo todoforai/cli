@@ -17,7 +17,7 @@ try {
   const pkgPath = path.resolve(fileURLToPath(import.meta.url), "../../package.json");
   checkForUpdates(JSON.parse(readFileSync(pkgPath, "utf-8")));
 } catch {}
-import { ApiClient, type RegistrySpec } from "@todoforai/edge/src/api";
+import { ApiClient, restBasePath, type RegistrySpec } from "@todoforai/edge/src/api";
 import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
 import { normalizeApiUrl } from "@todoforai/edge/src/config";
 
@@ -245,12 +245,11 @@ async function main() {
   // writes, so a bridge-only credentials.json authenticates without a re-login.
   // dst_… device-session tokens (the edge injects one as TODOFORAI_API_TOKEN into
   // every shell child, and the bridge stores one as apiToken) only authenticate
-  // on /dst/v1 — this CLI calls /api/v1, where they always 401. Skip them so we
-  // fall through to device-login instead of dying on a structurally wrong token.
-  const notDst = (t: string) => (t.startsWith("dst_") ? "" : t);
+  // on the /dst/v1 mount — ApiClient/restBasePath route them there, so they work
+  // like any other token here (headless sandboxes have nothing else).
   let apiKey = (args["api-key"] as string)
-    || notDst(readCredential(apiUrl))
-    || notDst(getEnv("API_TOKEN"))
+    || readCredential(apiUrl)
+    || getEnv("API_TOKEN")
     || "";
 
   if (!apiKey) {
@@ -347,7 +346,7 @@ async function main() {
       ttlSec = Number(args.ttl);
       if (!Number.isFinite(ttlSec)) { process.stderr.write(`${RED}--ttl must be a number (seconds)${RESET}\n`); process.exit(2); }
     }
-    const res = await fetch(`${apiUrl}/api/v1/claims/mint`, {
+    const res = await fetch(`${apiUrl}${restBasePath(apiKey)}/claims/mint`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify({ seedProjectId, ...(emails?.length ? { emails } : {}), ...(ttlSec !== undefined ? { ttlSec } : {}) }),
@@ -372,7 +371,7 @@ async function main() {
 
     if (positionals[0] === "next") {
       // Trigger a steered generation run (Business Analyzer → recommendation cards).
-      const res = await fetch(`${apiUrl}/api/v1/projects/${projectId}/recommendations/generate`, {
+      const res = await fetch(`${apiUrl}${restBasePath(apiKey)}/projects/${projectId}/recommendations/generate`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-api-key": apiKey },
         body: JSON.stringify({ projectId, ...(args["business-context"] ? { businessContextId: args["business-context"] } : {}) }),

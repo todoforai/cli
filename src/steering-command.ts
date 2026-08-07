@@ -4,6 +4,8 @@
 // Self-contained: talks to the REST endpoints directly so it doesn't depend on the
 // edge ApiClient. Auth mirrors the rest of the CLI (x-api-key header).
 
+import { restBasePath } from "@todoforai/edge/src/api";
+
 const RED = "\x1b[31m", GREEN = "\x1b[32m", DIM = "\x1b[2m", RESET = "\x1b[0m";
 
 interface Ctx {
@@ -14,7 +16,7 @@ interface Ctx {
 }
 
 async function rest(ctx: Ctx, method: string, path: string, body?: unknown) {
-  const res = await fetch(`${ctx.apiUrl}/api/v1${path}`, {
+  const res = await fetch(`${ctx.apiUrl}${restBasePath(ctx.apiKey)}${path}`, {
     method,
     headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
     ...(body ? { body: JSON.stringify(body) } : {}),
