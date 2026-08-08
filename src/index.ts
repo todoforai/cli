@@ -35,7 +35,6 @@ import { listAgentsCommand } from "./list-agents";
 import { listModelsCommand } from "./list-models";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
-import { steeringCommand } from "./steering-command";
 import { ensureBridgeRunning } from "./ensure-bridge";
 
 // ── helpers ──────────────────────────────────────────────────────────
@@ -360,32 +359,28 @@ async function main() {
     return;
   }
 
-  if (positionals[0] === "steering" || positionals[0] === "next") {
+  if (positionals[0] === "next") {
     let projectId = (args.project as string) || cfgScope.data.default_project_id;
     if (!projectId) {
       const projects = await api.listProjects();
       projectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
     }
     if (!projectId) { process.stderr.write(`${RED}No project found — pass --project <id>${RESET}\n`); process.exit(2); }
-    const sctx = { apiUrl, apiKey, projectId, json: !!args.json };
 
-    if (positionals[0] === "next") {
-      // Trigger a steered generation run (Business Analyzer → recommendation cards).
-      const res = await fetch(`${apiUrl}${restBasePath(apiKey)}/projects/${projectId}/recommendations/generate`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": apiKey },
-        body: JSON.stringify({ projectId, ...(args["business-context"] ? { businessContextId: args["business-context"] } : {}) }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const text = await res.text();
-      if (!res.ok) { process.stderr.write(`${RED}Generate failed: ${res.status} ${text}${RESET}\n`); process.exit(1); }
-      const out = JSON.parse(text);
-      if (args.json) console.log(JSON.stringify(out, null, 2));
-      else process.stderr.write(`${GREEN}✅ Generating recommendations — analyzer todo ${out.todoId}${RESET}\n`);
-      return;
-    }
-
-    await steeringCommand(sctx, positionals.slice(1));
+    // Ask the Business Analyzer for fresh recommendation cards. `--direction` is a
+    // free-text steer sent as a chat message into the project's ongoing analyzer chat.
+    const direction = (args.direction as string) || positionals.slice(1).join(" ").trim() || undefined;
+    const res = await fetch(`${apiUrl}${restBasePath(apiKey)}/projects/${projectId}/recommendations/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify({ projectId, ...(args["business-context"] ? { businessContextId: args["business-context"] } : {}), ...(direction ? { direction } : {}) }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const text = await res.text();
+    if (!res.ok) { process.stderr.write(`${RED}Generate failed: ${res.status} ${text}${RESET}\n`); process.exit(1); }
+    const out = JSON.parse(text);
+    if (args.json) console.log(JSON.stringify(out, null, 2));
+    else process.stderr.write(`${GREEN}✅ Generating recommendations — analyzer todo ${out.todoId}${RESET}\n`);
     return;
   }
 

@@ -34,10 +34,7 @@ Usage:
   todoforai-cli addmessage <todo-id> "text"  # Add a message to an existing todo
   todoforai-cli recommend --template <id>    # Add a template as a recommendation card (see 'todoregistry-cli create')
   todoforai-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> ownership links for a project you own
-  todoforai-cli steering get                 # Show recommendation steering (direction + boosted/muted categories)
-  todoforai-cli steering direction "<text>"  # Set the direction the generator should follow
-  todoforai-cli steering boost|mute <cat>    # Favour / avoid a category
-  todoforai-cli next                         # Generate steered recommendation cards
+  todoforai-cli next [--direction "<text>"]  # Ask the analyzer for growth recommendation cards (optional free-text steer)
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -114,6 +111,7 @@ export function parseCliArgs() {
       note: { type: "string" },
       priority: { type: "string" },
       title: { type: "string" },
+      direction: { type: "string" },
       "business-context": { type: "string" },
       seed: { type: "string" },
       emails: { type: "string" },
