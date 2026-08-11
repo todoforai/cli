@@ -296,6 +296,45 @@ async function main() {
     return;
   }
 
+  if (positionals[0] === "show") {
+    const [, filePath, todoArg] = positionals;
+    // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
+    // fall back to the last todo this CLI touched.
+    const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: todoforai-cli show <file|-> [todo-id]${RESET}\n`); process.exit(2); }
+
+    // `-` reads the bytes from stdin so any producer can pipe straight in
+    // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
+    let blob: Blob, name: string;
+    if (filePath === "-") {
+      blob = new Blob([await Bun.readableStreamToArrayBuffer(Bun.stdin.stream())]);
+      if (blob.size === 0) { process.stderr.write(`${RED}No data on stdin${RESET}\n`); process.exit(1); }
+      // --title is presentation metadata; it must not become the stored filename
+      // (it would also silently drive mime detection). Use --mime for the type.
+      name = "stdin";
+    } else {
+      const file = Bun.file(resolve(filePath));
+      if (!(await file.exists())) { process.stderr.write(`${RED}File not found: ${filePath}${RESET}\n`); process.exit(1); }
+      blob = file;
+      name = path.basename(filePath);
+    }
+
+    const res = await api.showFile(todoId, blob, name, { title: args.title, alias: args.alias, mime: args.mime });
+    if (args.json) console.log(JSON.stringify(res, null, 2));
+    else console.log(res.ref);
+    return;
+  }
+
+  if (positionals[0] === "open") {
+    const [, url, todoArg] = positionals;
+    const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    if (!url || !todoId) { process.stderr.write(`${RED}Usage: todoforai-cli open <url> [todo-id]${RESET}\n`); process.exit(2); }
+    const res = await api.showUrl(todoId, url, { title: args.title, alias: args.alias });
+    if (args.json) console.log(JSON.stringify(res, null, 2));
+    else console.log(res.ref);
+    return;
+  }
+
   if (positionals[0] === "recommend") {
     // Reference an existing registry template as a recommendation card on a project.
     // Templates are created by `todoregistry-cli create` (which prints the id).

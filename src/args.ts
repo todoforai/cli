@@ -32,6 +32,10 @@ Usage:
   todoforai-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
   todoforai-cli delete <todo-id>              # Permanently delete a todo
   todoforai-cli addmessage <todo-id> "text"  # Add a message to an existing todo
+  todoforai-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
+                                            #   [--title T] [--alias A] [--mime M] [--json]
+  todoforai-cli open <url> [todo-id]        # Show a live http(s) url in the chat as a preview
+                                            #   [--title T] [--alias A] [--json]
   todoforai-cli recommend --template <id>    # Add a template as a recommendation card (see 'todoregistry-cli create')
   todoforai-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> ownership links for a project you own
   todoforai-cli next [--direction "<text>"]  # Ask the analyzer for growth recommendation cards (optional free-text steer)
@@ -111,6 +115,8 @@ export function parseCliArgs() {
       note: { type: "string" },
       priority: { type: "string" },
       title: { type: "string" },
+      alias: { type: "string" },
+      mime: { type: "string" },
       direction: { type: "string" },
       "business-context": { type: "string" },
       seed: { type: "string" },
