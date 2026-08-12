@@ -5,7 +5,7 @@
  * so ids are printed in that form — copy-paste straight into `--model`.
  */
 
-import type { ApiClient } from "@todoforai/edge/src/api";
+import type { ApiClient } from "@shared/api";
 import { BRAND, RESET } from "./colors";
 
 export async function listModelsCommand(

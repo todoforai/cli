@@ -17,9 +17,8 @@ try {
   const pkgPath = path.resolve(fileURLToPath(import.meta.url), "../../package.json");
   checkForUpdates(JSON.parse(readFileSync(pkgPath, "utf-8")));
 } catch {}
-import { ApiClient, restBasePath, type RegistrySpec } from "@todoforai/edge/src/api";
-import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
-import { normalizeApiUrl } from "@todoforai/edge/src/config";
+import { ApiClient, restBasePath, FrontendWebSocket, type RegistrySpec } from "@shared/api";
+import { normalizeApiUrl } from "@shared/credentials";
 
 import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCliArgs } from "./args";
 import { readMultiline, readStdin } from "./input";

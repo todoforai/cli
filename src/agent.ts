@@ -2,7 +2,7 @@
 
 import { realpathSync } from "fs";
 import { resolve, basename } from "path";
-import { ApiClient } from "@todoforai/edge/src/api";
+import { ApiClient } from "@shared/api";
 import { bridgeDeviceId } from "./ensure-bridge";
 
 export function getAgentWorkspacePaths(agent: any): string[] {

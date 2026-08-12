@@ -21,9 +21,6 @@ jobs:
         node-version: '22'
         registry-url: 'https://registry.npmjs.org'
 
-    - name: Checkout edge
-      run: git clone --depth 1 https://x-access-token:${{ secrets.GH_PAT }}@github.com/todoforai/edge.git ../edge
-
     - name: Checkout shared packages
       run: git clone --depth 1 https://x-access-token:${{ secrets.GH_PAT }}@github.com/todoforai/packages.git ../packages
 
@@ -47,14 +44,12 @@ jobs:
           NEW_VERSION=$(echo "$NPM_VERSION" | awk -F. '{print $1"."$2"."($3+1)}')
         fi
 
-        # Rewrite package.json: pin version, swap @todoforai/edge dev->peer, drop postinstall
+        # Rewrite package.json: pin version, drop the @shared/* file: deps (bundled into dist)
         node -e "
           const pkg = require('./package.json');
           pkg.version = '$NEW_VERSION';
-          pkg.peerDependencies = pkg.peerDependencies || {};
-          pkg.peerDependencies['@todoforai/edge'] = '>=0.12.0';
-          delete (pkg.devDependencies || {})['@todoforai/edge'];
-          delete (pkg.scripts || {}).postinstall;
+          for (const d of ['dependencies', 'devDependencies'])
+            for (const k of Object.keys(pkg[d] || {})) if (k.startsWith('@shared/')) delete pkg[d][k];
           require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
         "
 
@@ -63,6 +58,10 @@ jobs:
         # shipped the PREVIOUS version — `--version` reported 0.1.24 from a 0.1.26
         # package until this was reordered.
         bun run build
+
+        # The @shared/* deps were stripped above because the bundle inlines them.
+        # Fail loudly if the bundle still needs one at runtime.
+        ! grep -qE '(from|require\()["'"'"']@shared/' dist/todoai.js
 
         echo "Publishing $PACKAGE_NAME@$NEW_VERSION (npm had $NPM_VERSION, local was $LOCAL_VERSION)"
         npm publish --access public --ignore-scripts

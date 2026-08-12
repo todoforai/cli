@@ -1,6 +1,6 @@
 /** `--list-agents` handler — prints agents (name, model, id, workspace paths). */
 
-import type { ApiClient } from "@todoforai/edge/src/api";
+import type { ApiClient } from "@shared/api";
 import { getAgentWorkspacePaths } from "./agent";
 import { getDisplayName, getItemId } from "./select";
 import { BRAND, CYAN, DIM, RESET } from "./colors";

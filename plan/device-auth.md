@@ -28,7 +28,7 @@ Waiting for approval (expires in 10min)...
 
 ### Implementation: ~30 lines in `src/index.ts`
 
-The CLI already imports `ApiClient` from `@todoforai/edge/src/api` which has
+The CLI already imports `ApiClient` from `@shared/api` which has
 `initDeviceLogin()` and `pollDeviceLogin()`.
 
 **Key resolution priority** (same as edge):

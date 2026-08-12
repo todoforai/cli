@@ -1,6 +1,6 @@
 /** `agent` subcommand — inspect and update agent settings (model, etc.). */
 
-import type { ApiClient } from "@todoforai/edge/src/api";
+import type { ApiClient } from "@shared/api";
 import { getAgentWorkspacePaths } from "./agent";
 import { listAgentsCommand } from "./list-agents";
 import { getDisplayName, getItemId, resolveAgentMatch } from "./select";
