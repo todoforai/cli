@@ -24,7 +24,7 @@ import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCli
 import { readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
-import { readCredential, persistLogin, loginClientName, defaultDeviceName, hostIdentity } from "./credentials";
+import { readCredential, writeCredential } from "./credentials";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
 import { printFullChat, applySlice, toAnthropicShape, type InspectMode, type InspectFormat } from "./inspect";
@@ -183,17 +183,11 @@ async function main() {
   }
 
   // ── device login ──
-  // Normally enrolls this machine as a *device* (see loginClientName), matching
-  // `todoforai-bridge login` — the CLI and the bridge it spawns then share one
-  // identity instead of the CLI holding a separate durable sk_ ApiKey. Sending
-  // the host's machine-id lets the backend dedupe against an existing device row
-  // instead of accumulating a phantom one per login.
   async function deviceLogin(): Promise<string> {
     const loginApi = new ApiClient(apiUrl, ""); // no key needed for init
-    const { code, url, expiresIn } = await loginApi.initDeviceLogin(loginClientName(apiUrl), {
-      deviceName: defaultDeviceName(),
-      identity: hostIdentity(),
-    });
+    // clientName "edge" → backend mints a durable apiKey (handled below); "cli"/"bridge"
+    // route to the device-credential branch that returns device/apiToken (no apiKey).
+    const { code, url, expiresIn } = await loginApi.initDeviceLogin("edge");
 
     const userCode = new URL(url).searchParams.get("user_code") || code.slice(-8).toUpperCase();
     const formattedCode = userCode.length === 8 ? `${userCode.slice(0, 4)}-${userCode.slice(4)}` : userCode;
@@ -220,14 +214,10 @@ async function main() {
       try {
         const poll = await loginApi.pollDeviceLogin(code);
         failures = 0;
-        if (poll.status === "complete") {
-          const token = persistLogin(apiUrl, poll);
-          if (!token) {
-            process.stderr.write(`${RED}Login completed without usable credentials.${RESET}\n`);
-            process.exit(1);
-          }
-          process.stderr.write(`${GREEN}✅ Login successful! Credentials saved.${RESET}\n`);
-          return token;
+        if (poll.status === "complete" && poll.apiKey) {
+          writeCredential(apiUrl, poll.apiKey);
+          process.stderr.write(`${GREEN}✅ Login successful! API key saved.${RESET}\n`);
+          return poll.apiKey;
         }
         if (poll.status === "expired") break;
       } catch (e: any) {
