@@ -30,9 +30,6 @@ jobs:
     - name: Install dependencies
       run: bun install
 
-    - name: Build
-      run: bun run build
-
     - name: Resolve version & publish
       id: publish
       env:
@@ -60,6 +57,12 @@ jobs:
           delete (pkg.scripts || {}).postinstall;
           require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
         "
+
+        # Build AFTER the version rewrite: src/args.ts imports package.json, so the
+        # bundle inlines whatever version is on disk at build time. Building first
+        # shipped the PREVIOUS version — `--version` reported 0.1.24 from a 0.1.26
+        # package until this was reordered.
+        bun run build
 
         echo "Publishing $PACKAGE_NAME@$NEW_VERSION (npm had $NPM_VERSION, local was $LOCAL_VERSION)"
         npm publish --access public --ignore-scripts
