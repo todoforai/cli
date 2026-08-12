@@ -44,6 +44,8 @@ Options:
   --path <dir>                    Workspace path (default: cwd)
   --project <id>                  Project ID
   --agent, -a <name>              Agent name (partial match)
+  --group <slug>                 Group new todo; omitted inherits TODOFORAI_GROUP_ID
+  --group-name <name>            Display name for --group (last write wins)
   --model <model>                 Override the agent's model for this todo
                                   (e.g. anthropic:anthropic/claude-opus-5, openai:openai/gpt-5.6-sol)
   --list-agents                   List available agents (name, id, workspace paths) and exit
@@ -105,6 +107,8 @@ export function parseCliArgs() {
       project: { type: "string" },
       agent: { type: "string", short: "a" },
       model: { type: "string" },
+      group: { type: "string" },
+      "group-name": { type: "string" },
       "list-agents": { type: "boolean", default: false },
       "list-models": { type: "boolean", default: false },
       "api-url": { type: "string" },

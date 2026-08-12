@@ -318,6 +318,10 @@ export async function watchTodo(
     if (!result?.success) {
       const status = result?.payload?.status || result?.type || "unknown";
       process.stderr.write(`Warning: Stopped: ${status}\n`);
+      // Non-success terminal status must be observable by callers (CI, harbor).
+      // Harbor classifies infra-vs-agent failures by regexing the output, so the
+      // exit code only has to say "not completed".
+      process.exitCode = 1;
     }
     return true;
   } catch (e: any) {

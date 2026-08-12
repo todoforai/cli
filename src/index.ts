@@ -130,6 +130,9 @@ async function main() {
   });
 
   const { values: args, positionals } = parseCliArgs();
+  // Three states: omitted inherits, --group "" explicitly escapes, non-empty overrides.
+  const groupTag = args.group === undefined ? getEnv("GROUP_ID") : String(args.group);
+  const groupName = args["group-name"] === undefined ? undefined : String(args["group-name"]);
 
   // `start <id>` is sugar for `--template <id>`
   if (positionals[0] === "start") {
@@ -495,7 +498,10 @@ async function main() {
     }
     if (!projectId) { process.stderr.write("Error: No project found\n"); process.exit(1); }
 
-    const todo = await api.startFromSpec(projectId, templateId);
+    const todo = await api.startFromSpec(projectId, templateId, {
+      ...(groupTag ? { groupTag } : {}),
+      ...(groupName ? { groupName } : {}),
+    });
     const todoId = todo.id;
     cfgScope.setLastTodoId(todoId);
 
@@ -718,7 +724,7 @@ async function main() {
   cfg.addToHistory(content);
   let todo: any;
   try {
-    todo = await api.addMessage(projectId, content, agent);
+    todo = await api.addMessage(projectId, content, agent, undefined, undefined, undefined, groupTag || undefined, groupName);
   } catch (e: any) {
     // Cached default project may belong to another account or be deleted.
     if (!args.project && cfgScope.data.default_project_id === projectId && /failed: 403/.test(e.message || "")) {
