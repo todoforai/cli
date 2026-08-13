@@ -290,6 +290,11 @@ export async function watchTodo(
         process.stderr.write(`${preview}${extra}\n`);
         signalActivity();
       }
+    } else if (msgType === "NOTIFY") {
+      // Server-side notice (web shows a toast) — e.g. model clamped to the plan's allowed model
+      const sevColor = payload.severity === "error" ? RED : YELLOW;
+      process.stderr.write(`\n${sevColor}⚠ ${payload.title || "Notice"}${RESET}${payload.message ? ` ${DIM}${payload.message}${RESET}` : ""}\n`);
+      signalActivity();
     } else if (msgType === "todo:status") {
       const status = payload.status || "";
       process.stderr.write(`\n${DIM}[todo:status] ${status}${RESET}\n`);
