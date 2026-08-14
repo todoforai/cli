@@ -89,18 +89,6 @@ export async function watchTodo(
 
   const signalActivity = () => opts.activityEvent?.set();
 
-  // Resolve edge_id + root_path from agent settings
-  let edgeId: string | undefined;
-  let rootPath = "";
-  if (opts.agentSettings) {
-    const emc = opts.agentSettings.edgesMcpConfigs || {};
-    edgeId = Object.keys(emc)[0];
-    if (edgeId) {
-      const ec = emc[edgeId];
-      const tc = ec?.todoai_edge || ec?.todoai || {};
-      rootPath = (tc.workspacePaths || [])[0] || "";
-    }
-  }
 
   // Track block info from start events + BLOCK_UPDATE updates
   const blocksStore = new Map<string, Record<string, any>>();

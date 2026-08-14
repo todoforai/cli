@@ -55,8 +55,13 @@ export async function autoCreateAgent(api: ApiClient, resolvedPath: string): Pro
   }
 
   const edges = await api.listEdges();
-  const edgeId = Array.isArray(edges) && edges.length ? edges[0].id : null;
-  if (!edgeId) throw new Error("No bridge device or edge available to configure workspace path");
+  if (!Array.isArray(edges) || edges.length === 0) {
+    throw new Error("No bridge device or edge available to configure workspace path");
+  }
+  if (edges.length > 1) {
+    throw new Error("No local bridge device found and multiple legacy edges are available; choose an existing agent explicitly");
+  }
+  const edgeId = edges[0].id;
 
   await api.setAgentEdgeMcpConfig(agentId, agentSettingsId, edgeId, "todoai_edge", { workspacePaths: [resolvedPath] });
 
