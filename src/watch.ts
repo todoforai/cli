@@ -315,6 +315,8 @@ export async function watchTodo(
   try {
     const result = await ws.waitForCompletion(todoId, callback);
     process.stdout.write("\n");
+    // Exit code tracks the LAST watched turn, so an interactive session that
+    // recovers from a failed turn still exits 0.
     if (!result?.success) {
       const status = result?.payload?.status || result?.type || "unknown";
       process.stderr.write(`Warning: Stopped: ${status}\n`);
@@ -322,6 +324,8 @@ export async function watchTodo(
       // Harbor classifies infra-vs-agent failures by regexing the output, so the
       // exit code only has to say "not completed".
       process.exitCode = 1;
+    } else {
+      process.exitCode = 0;
     }
     return true;
   } catch (e: any) {

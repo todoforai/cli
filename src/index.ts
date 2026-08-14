@@ -768,7 +768,9 @@ async function main() {
   }
 }
 
-main().then(() => process.exit(0)).catch((e) => {
+// Preserve any exit code set during the run (e.g. watchTodo on a non-success
+// terminal status); `process.exit(0)` would mask a failed run as success.
+main().then(() => process.exit(process.exitCode ?? 0)).catch((e) => {
   process.stderr.write(`Error: ${e.message}\n`);
   process.exit(1);
 });
