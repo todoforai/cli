@@ -18,6 +18,7 @@ try {
   checkForUpdates(JSON.parse(readFileSync(pkgPath, "utf-8")));
 } catch {}
 import { ApiClient, restBasePath, FrontendWebSocket, type RegistrySpec } from "@shared/api";
+import { qualifiedModelIds } from "@shared/fbe";
 import { normalizeApiUrl } from "@shared/credentials";
 
 import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCliArgs } from "./args";
@@ -31,7 +32,6 @@ import { printFullChat, applySlice, toAnthropicShape, type InspectMode, type Ins
 import { selectProject, selectAgent, getDisplayName, getItemId, resolveAgentMatch } from "./select";
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
-import { listModelsCommand } from "./list-models";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { ensureBridgeRunning } from "./ensure-bridge";
@@ -427,7 +427,13 @@ async function main() {
 
   if (args["list-agents"]) { await listAgentsCommand(api, { json: !!args.json, formatPath: formatPathWithTilde }); return; }
 
-  if (args["list-models"]) { await listModelsCommand(api, { json: !!args.json, filter: positionals[0] }); return; }
+  if (args["list-models"]) {
+    // Ids come back as `provider:openrouter-id` — copy-pasteable into --model.
+    const ids = qualifiedModelIds(await api.listModels(), positionals[0]);
+    if (args.json) console.log(JSON.stringify(ids, null, 2));
+    else for (const id of ids) process.stderr.write(`${BRAND}${id}${RESET}\n`);
+    return;
+  }
 
   if (positionals[0] === "agent") { await agentCommand(api, positionals, args, formatPathWithTilde); return; }
 
