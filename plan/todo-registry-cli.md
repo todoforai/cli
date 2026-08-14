@@ -3,7 +3,7 @@
 ## Idea
 
 A standalone `todo-registry` CLI (in `api-apps/` style) for browsing and searching the template registry.
-Separate from `todoai` — this is read-only, no auth needed, uses the public `/cookie/v1/registry/` endpoints.
+Separate from `todoforai-cli` — this is read-only, no auth needed, uses the public `/cookie/v1/registry/` endpoints.
 
 ## Commands
 
@@ -20,9 +20,9 @@ todo-registry categories                    # list all categories
 - Bun + commander (same pattern as `api-apps/apollo-api`)
 - Uses `ApiClient.listRegistrySpecs()` and `ApiClient.getRegistrySpec()` from `@shared/api`
 - Or direct fetch to `/cookie/v1/registry/templates` (no auth needed)
-- Lives in `api-apps/todo-registry-cli/` or as a subcommand of `todoai`
+- Lives in `api-apps/todo-registry-cli/` or as a subcommand of `todoforai-cli`
 
 ## Open question
 
-Could also be `todoai registry list` / `todoai registry search` subcommands instead of a separate binary.
+Could also be `todoforai-cli registry list` / `todoforai-cli registry search` subcommands instead of a separate binary.
 Separate binary is simpler (no coupling), subcommand is more discoverable.

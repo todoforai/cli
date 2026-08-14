@@ -8,10 +8,10 @@
   },
   "files": [
     "bin",
-    "dist/todoai.js"
+    "dist/todoforai-cli.js"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --target=bun --outfile dist/todoai.js --external ws",
+    "build": "bun build src/index.ts --target=bun --outfile dist/todoforai-cli.js --external ws",
     "prepublishOnly": "bun run build",
     "start": "bun run src/index.ts",
     "dev": "bun run src/index.ts"

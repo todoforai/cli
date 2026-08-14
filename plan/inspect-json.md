@@ -2,7 +2,7 @@
 
 ## Problem
 
-`todoai --inspect <id>` currently only outputs human-readable colored text to stderr/stdout.
+`todoforai-cli --inspect <id>` currently only outputs human-readable colored text to stderr/stdout.
 The test runner (`todo-registry/scripts/test-todo.ts`) has to read the CLI config file and hit the API directly to get structured data.
 
 ## Solution
@@ -11,7 +11,7 @@ When `--inspect` is combined with `--json`, output the full todo object as JSON 
 No colors, no formatting — just the raw API response.
 
 ```bash
-todoai --inspect <todo-id> --json
+todoforai-cli --inspect <todo-id> --json
 ```
 
 ```json

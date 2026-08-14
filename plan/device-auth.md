@@ -1,23 +1,23 @@
-# CLI Device Auth (`todoai login`)
+# CLI Device Auth (`todoforai-cli login`)
 
 ## Current
 
 ```
-todoai --set-default-api-key <key>   # manual copy-paste from web
-todoai --api-key <key> "prompt"      # per-invocation
-TODOFORAI_API_KEY=xxx todoai "prompt" # env var
+todoforai-cli --set-default-api-key <key>   # manual copy-paste from web
+todoforai-cli --api-key <key> "prompt"      # per-invocation
+TODOFORAI_API_KEY=xxx todoforai-cli "prompt" # env var
 ```
 
 No browser-based login. User must manually get API key from web UI.
 
 ## Solution
 
-Add `todoai login` command using the same backend endpoints the edge already uses.
+Add `todoforai-cli login` command using the same backend endpoints the edge already uses.
 
 ### Flow
 
 ```
-$ todoai login
+$ todoforai-cli login
 🔑 Open this URL to authorize:
 https://todofor.ai/cli-auth?code=abc123...
 Verification code: ABC123EF
@@ -46,7 +46,7 @@ The CLI already imports `ApiClient` from `@shared/api` which has
 **`src/index.ts`** — add login handler before API key check (~25 lines):
 
 ```typescript
-// Handle `todoai login`
+// Handle `todoforai-cli login`
 if (positionals[0] === "login") {
   const apiUrl = normalizeApiUrl(
     (args["api-url"] as string) || cfg.data.default_api_url || getEnv("API_URL") || DEFAULT_API_URL,
@@ -99,8 +99,8 @@ if stdin is a TTY — same pattern as edge's step 3→4 fallback.
 
 ### Comparison
 
-| | Current | With `todoai login` |
+| | Current | With `todoforai-cli login` |
 |---|---|---|
-| First use | copy-paste key from web | `todoai login` → approve → done |
+| First use | copy-paste key from web | `todoforai-cli login` → approve → done |
 | Key storage | `--set-default-api-key` | automatic after login |
 | CI/headless | `--api-key` / env | same |

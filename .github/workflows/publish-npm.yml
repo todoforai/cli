@@ -61,7 +61,7 @@ jobs:
 
         # The @shared/* deps were stripped above because the bundle inlines them.
         # Fail loudly if the bundle still needs one at runtime.
-        ! grep -qE '(from|require\()["'"'"']@shared/' dist/todoai.js
+        ! grep -qE '(from|require\()["'"'"']@shared/' dist/todoforai-cli.js
 
         echo "Publishing $PACKAGE_NAME@$NEW_VERSION (npm had $NPM_VERSION, local was $LOCAL_VERSION)"
         npm publish --access public --ignore-scripts

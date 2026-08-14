@@ -5,7 +5,7 @@
 1. **First run** - Add some commands:
    ```bash
    # In interactive mode, type a few commands:
-   todoai -c  # or any interactive session
+   todoforai-cli -c  # or any interactive session
    > first command
    > second command  
    > third command
@@ -14,7 +14,7 @@
 
 2. **Second run** - Verify history persists:
    ```bash
-   todoai -c
+   todoforai-cli -c
    # Press UP arrow - should show "third command"
    # Press UP again - should show "second command"
    # Press UP again - should show "first command"
