@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { ApiClient } from "@shared/api";
 
 function hasBridge(): boolean {
   const probe = spawnSync("todoforai-bridge", ["--version"], { stdio: "ignore" });
@@ -86,30 +87,49 @@ function ensureBridgeCredentials(apiUrl: string): boolean {
 }
 
 
-function bridgeAlreadyRunning(): Promise<boolean> {
-  if (process.platform === "win32") return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const r = spawn("pgrep", ["-f", "todoforai-bridge"]);
-    let out = "";
-    r.stdout.on("data", (d) => (out += d));
-    r.on("error", () => resolve(false));
-    // Exclude our own pgrep/login invocations: any surviving pid means a daemon runs.
-    r.on("close", (code) => resolve(code === 0 && out.trim().length > 0));
-  });
+type BridgeState = "online" | "offline" | "unknown";
+
+async function bridgeState(apiUrl: string, apiKey: string, deviceId: string): Promise<BridgeState> {
+  try {
+    const devices = await new ApiClient(apiUrl, apiKey).listDevices();
+    return Array.isArray(devices) && devices.some(device => device.id === deviceId && device.status === "ONLINE")
+      ? "online"
+      : "offline";
+  } catch {
+    return "unknown";
+  }
 }
 
-export async function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
-  if (await bridgeAlreadyRunning()) return; // normal case: daemon already up — stay quiet
+async function waitForBridgeOnline(apiUrl: string, apiKey: string, deviceId: string, timeoutMs = 5_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const state = await bridgeState(apiUrl, apiKey, deviceId);
+    if (state !== "offline") return state === "online";
+    await new Promise(resolve => setTimeout(resolve, 150));
+  } while (Date.now() < deadline);
+  return false;
+}
 
+export async function ensureBridgeRunning(apiUrl: string, apiKey: string): Promise<boolean> {
   if (!hasBridge()) {
     console.error("\x1b[2mBridge not started: `todoforai-bridge` was not found on PATH. Install TODOforAI Bridge, or pass --no-bridge (or deprecated --no-edge) to silence this.\x1b[0m");
-    return;
+    return false;
   }
 
   if (!ensureBridgeCredentials(apiUrl)) {
     console.error("\x1b[33mBridge not started: `todoforai-bridge login` did not complete successfully.\x1b[0m");
-    return;
+    return false;
   }
+
+  const deviceId = bridgeDeviceId(apiUrl);
+  if (!deviceId) {
+    console.error("\x1b[33mBridge not started: could not determine this device's id.\x1b[0m");
+    return false;
+  }
+  const initialState = await bridgeState(apiUrl, apiKey, deviceId);
+  // If this token cannot query devices, preserve the previous best-effort
+  // behavior instead of spawning a duplicate daemon on every CLI invocation.
+  if (initialState === "online" || initialState === "unknown") return initialState === "online";
 
   const logDir = path.join(os.homedir(), ".todoforai");
   fs.mkdirSync(logDir, { recursive: true });
@@ -129,13 +149,11 @@ export async function ensureBridgeRunning(apiUrl: string, _apiKey: string) {
   child.on("exit", (code) => { exited = true; exitCode = code; });
   child.unref();
 
-  if (!child.pid) return;
+  if (!child.pid) return false;
+  if (await waitForBridgeOnline(apiUrl, apiKey, deviceId)) return true;
+
   const shortLog = logFile.replace(os.homedir(), "~");
-  setTimeout(() => {
-    // We only spawned because no daemon was running, so an early death is a
-    // real failure (e.g. stale credentials) — worth one dim line.
-    if (exited && exitCode !== 0) {
-      console.error(`\x1b[2mBridge not running (exit ${exitCode}), see ${shortLog}\x1b[0m`);
-    }
-  }, 500);
+  const reason = exited ? `exit ${exitCode}` : "startup timed out";
+  console.error(`\x1b[33mBridge not ready (${reason}), see ${shortLog}\x1b[0m`);
+  return false;
 }

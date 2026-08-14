@@ -483,7 +483,7 @@ async function main() {
 
   // ── template mode ──
   if (args.template) {
-    if (!args["no-bridge"] && !args["no-watch"]) ensureBridgeRunning(apiUrl, apiKey);
+    if (!args["no-bridge"] && !args["no-watch"]) await ensureBridgeRunning(apiUrl, apiKey);
     const templateId = args.template as string;
 
     // Fetch spec to show info
@@ -553,7 +553,7 @@ async function main() {
 
   // ── resume mode ──
   if (args.resume || args.continue) {
-    if (!args["no-bridge"]) ensureBridgeRunning(apiUrl, apiKey);
+    if (!args["no-bridge"]) await ensureBridgeRunning(apiUrl, apiKey);
     const todoId = (args.resume as string) || cfgScope.data.last_todo_id;
     if (!todoId) { process.stderr.write("Error: No recent todo found\n"); process.exit(1); }
 
@@ -596,12 +596,12 @@ async function main() {
     process.exit(2);
   }
 
-  // ── start independent work early: WS connect + bridge check run in
-  // parallel with the agent/project fetches below ──
+  // ── start independent work early ──
   const ws = args["no-watch"] ? null : new FrontendWebSocket(apiUrl, apiKey);
   const wsReady = ws ? ws.connect() : null;
-  // Creating + watching a new todo needs the bridge; fire-and-forget.
-  if (!args["no-bridge"] && !args["no-watch"]) void ensureBridgeRunning(apiUrl, apiKey);
+  const bridgeReady = !args["no-bridge"] && !args["no-watch"]
+    ? ensureBridgeRunning(apiUrl, apiKey)
+    : null;
 
   // ── pre-resolve agent by --agent name or --path ──
   let preMatchedAgent: any = null;
@@ -712,8 +712,10 @@ async function main() {
     );
   }
 
-  // ── WS must be connected before creating the todo to avoid missing early events ──
+  // The frontend socket must be connected to avoid missing early events, and
+  // the local bridge must be online before the backend snapshots available devices.
   if (wsReady) await wsReady;
+  if (bridgeReady) await bridgeReady;
 
   // ── create todo ──
   if (args.model) agent = { ...agent, model: args.model };
