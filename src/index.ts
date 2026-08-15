@@ -287,7 +287,10 @@ async function main() {
     const content = rest.join(" ") || (await readStdin());
     if (!todoId || !content) { process.stderr.write(`${RED}Usage: todoforai-cli addmessage <todo-id> "content"${RESET}\n`); process.exit(2); }
     const todo = await api.getTodo(todoId);
-    const msg = await api.addMessage(todo.projectId, content, todo.agentSettings || { id: todo.agentSettingsId }, todoId);
+    // getTodo only returns agentSettingsId; addMessage needs the full settings
+    // (the API asserts id+name+…), so fetch them when not inlined.
+    const agent = todo.agentSettings || await api.getAgentSettings(todo.agentSettingsId);
+    const msg = await api.addMessage(todo.projectId, content, agent, todoId);
     if (args.json) console.log(JSON.stringify(msg, null, 2));
     else process.stderr.write(`${GREEN}✅ Message added to ${todoId}${RESET}\n`);
     return;
