@@ -28,6 +28,7 @@ import { ConfigStore } from "./config";
 import { readCredential, writeCredential } from "./credentials";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
+import { getFrontendUrl } from "./urls";
 import { printFullChat, applySlice, toAnthropicShape, type InspectMode, type InspectFormat } from "./inspect";
 import { selectProject, selectAgent, getDisplayName, getItemId, resolveAgentMatch } from "./select";
 import { watchTodo } from "./watch";
@@ -43,12 +44,6 @@ function formatPathWithTilde(path: string): string {
   return path.startsWith(home) ? path.replace(home, "~") : path;
 }
 
-function getFrontendUrl(apiUrl: string, projectId: string, todoId: string): string {
-  if (apiUrl.includes("localhost:4000") || apiUrl.includes("127.0.0.1:4000")) {
-    return `http://localhost:3000/${projectId}/${todoId}`;
-  }
-  return `https://todofor.ai/${projectId}/${todoId}`;
-}
 
 // ── interactive loop ─────────────────────────────────────────────────
 
@@ -476,7 +471,7 @@ async function main() {
     }
     const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
     const format: InspectFormat = args["format-anthropic"] ? "anthropic" : "compact";
-    printFullChat(todo, getFrontendUrl(apiUrl, todo.projectId, todoId), slice, mode, format);
+    printFullChat(todo, getFrontendUrl(apiUrl, todoId), slice, mode, format);
     return;
   }
 
@@ -511,7 +506,7 @@ async function main() {
     const todoId = todo.id;
     cfgScope.setLastTodoId(todoId);
 
-    const frontendUrl = getFrontendUrl(apiUrl, projectId, todoId);
+    const frontendUrl = getFrontendUrl(apiUrl, todoId);
 
     if (args.json) {
       console.log(JSON.stringify({ ...todo, frontend_url: frontendUrl }, null, 2));
@@ -571,7 +566,7 @@ async function main() {
       process.stderr.write(`${role}: ${(msg.content || "").slice(0, 200)}\n`);
     }
 
-    process.stderr.write(`\n${"─".repeat(40)}\nResumed: ${CYAN}${getFrontendUrl(apiUrl, projectId, todoId)}${RESET}\n`);
+    process.stderr.write(`\n${"─".repeat(40)}\nResumed: ${CYAN}${getFrontendUrl(apiUrl, todoId)}${RESET}\n`);
 
     const ws = new FrontendWebSocket(apiUrl, apiKey);
     await ws.connect();
@@ -743,7 +738,7 @@ async function main() {
   const actualTodoId = todo.id || crypto.randomUUID();
   cfgScope.setLastTodoId(actualTodoId);
 
-  const frontendUrl = getFrontendUrl(apiUrl, projectId, actualTodoId);
+  const frontendUrl = getFrontendUrl(apiUrl, actualTodoId);
 
   if (args.json) {
     console.log(JSON.stringify({ ...todo, frontend_url: frontendUrl }, null, 2));
