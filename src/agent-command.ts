@@ -3,7 +3,7 @@
 import type { ApiClient } from "@shared/api";
 import { getAgentWorkspacePaths } from "./agent";
 import { listAgentsCommand } from "./list-agents";
-import { getDisplayName, getItemId, resolveAgentMatch } from "./select";
+import { getDisplayName, getItemId, resolveAgentMatch, singleChar } from "./select";
 import { BRAND, CYAN, DIM, GREEN, RED, RESET } from "./colors";
 
 export function printAgentHelp() {
@@ -14,6 +14,7 @@ Usage:
   todoforai-cli agent list                            List agents (name, model, id, paths)
   todoforai-cli agent get <agent>                     Show a single agent's settings
   todoforai-cli agent update <agent> <field=value>…   Update one or more settings
+  todoforai-cli agent delete <agent>                  Delete an agent configuration (asks to confirm)
 
 <agent> is a name or id (unique partial name also works).
 Fields map directly to agent settings; values are parsed as JSON when possible
@@ -99,6 +100,22 @@ export async function agentCommand(
     if (args.json) { console.log(JSON.stringify(updated, null, 2)); return; }
     const summary = Object.keys(updates).map((k) => `${k}=${JSON.stringify((updated as any)[k])}`).join(" ");
     process.stderr.write(`${GREEN}✅ ${getDisplayName(agent)} updated: ${summary}${RESET}\n`);
+    return;
+  }
+
+  if (sub === "delete" || sub === "rm") {
+    const query = positionals[2];
+    if (!query) { process.stderr.write(`${RED}Usage: todoforai-cli agent delete <name|id>${RESET}\n`); process.exit(2); }
+    const agents = await api.listAgentSettings();
+    const agent = resolveAgent(agents, query);
+    const name = getDisplayName(agent);
+    if (!args.force) {
+      if (!process.stdin.isTTY) { process.stderr.write(`${RED}Refusing to delete '${name}' non-interactively. Re-run with --force.${RESET}\n`); process.exit(2); }
+      const ok = await singleChar(`${RED}Delete agent '${name}'? [y/N] ${RESET}`);
+      if (ok !== "y") { process.stderr.write("Aborted\n"); return; }
+    }
+    await api.deleteAgentSettings(getItemId(agent));
+    process.stderr.write(`${GREEN}✅ Deleted ${name}${RESET}\n`);
     return;
   }
 
