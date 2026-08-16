@@ -109,11 +109,9 @@ export async function agentCommand(
     const agents = await api.listAgentSettings();
     const agent = resolveAgent(agents, query);
     const name = getDisplayName(agent);
-    if (!args.force) {
-      if (!process.stdin.isTTY) { process.stderr.write(`${RED}Refusing to delete '${name}' non-interactively. Re-run with --force.${RESET}\n`); process.exit(2); }
-      const ok = await singleChar(`${RED}Delete agent '${name}'? [y/N] ${RESET}`);
-      if (ok !== "y") { process.stderr.write("Aborted\n"); return; }
-    }
+    if (!process.stdin.isTTY) { process.stderr.write(`${RED}Refusing to delete '${name}' non-interactively (delete needs an interactive confirm).${RESET}\n`); process.exit(2); }
+    const ok = await singleChar(`${RED}Delete agent '${name}'? [y/N] ${RESET}`);
+    if (ok !== "y") { process.stderr.write("Aborted\n"); return; }
     await api.deleteAgentSettings(getItemId(agent));
     process.stderr.write(`${GREEN}✅ Deleted ${name}${RESET}\n`);
     return;

@@ -135,7 +135,6 @@ export function parseCliArgs() {
       "no-watch": { type: "boolean", default: false },
       "no-bridge": { type: "boolean", default: false },
       "no-edge": { type: "boolean", default: false },
-      force: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       detailed: { type: "boolean", default: false },
       "format-anthropic": { type: "boolean", default: false },
