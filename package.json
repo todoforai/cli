@@ -4,6 +4,7 @@
   "type": "module",
   "bin": {
     "todoforai-cli": "bin/todoforai-cli.js",
+    "tfa-cli": "bin/todoforai-cli.js",
     "todoai": "bin/todoforai-cli.js"
   },
   "files": [
