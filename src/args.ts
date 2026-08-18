@@ -109,6 +109,7 @@ export function parseCliArgs() {
       model: { type: "string" },
       group: { type: "string" },
       "group-name": { type: "string" },
+      "group-description": { type: "string" },
       "list-agents": { type: "boolean", default: false },
       "list-models": { type: "boolean", default: false },
       "api-url": { type: "string" },

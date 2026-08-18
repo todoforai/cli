@@ -340,7 +340,7 @@ async function main() {
     // Templates are created by `todoregistry-cli create` (which prints the id).
     const templateId = (args.template as string) || positionals[1];
     if (!templateId) {
-      process.stderr.write(`${RED}Usage: todoforai-cli recommend --template <id> [--note "why"] [--priority high|medium|low] [--title "..."] [--project <id>]${RESET}\n`);
+      process.stderr.write(`${RED}Usage: todoforai-cli recommend --template <id> [--note "why"] [--priority high|medium|low] [--title "..."] [--group <slug> [--group-name "..."] [--group-description "..."]] [--project <id>]${RESET}\n`);
       process.stderr.write(`${DIM}Create a template first with: todoregistry-cli create --name ... --description ... --body @prompt.md${RESET}\n`);
       process.exit(2);
     }
@@ -363,6 +363,9 @@ async function main() {
       ...(args.note ? { note: args.note as string } : {}),
       ...(priority ? { priority } : {}),
       ...(args["business-context"] ? { businessContextId: args["business-context"] as string } : {}),
+      ...(args.group ? { group: args.group as string } : {}),
+      ...(args["group-name"] ? { groupName: args["group-name"] as string } : {}),
+      ...(args["group-description"] ? { groupDescription: args["group-description"] as string } : {}),
     });
     if (args.json) console.log(JSON.stringify(rec, null, 2));
     else process.stderr.write(`${GREEN}✅ Recommended template ${templateId} on project ${projectId}${RESET}\n`);
