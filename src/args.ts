@@ -33,7 +33,9 @@ Usage:
   todoforai-cli delete <todo-id>              # Permanently delete a todo
   todoforai-cli addmessage <todo-id> "text"  # Add a message to an existing todo
   todoforai-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
-                                            #   [--title T] [--alias A] [--mime M] [--json]
+                                            #   [--title T] [--alias A] [--mime M] [--card <name>] [--json]
+  todoforai-cli show list [todo-id]         # List show blocks in a todo (ref, alias, title, mime/url, card)
+                                            #   [--card <name>] [--json]
   todoforai-cli open <url> [todo-id]        # Show a live http(s) url in the chat as a preview
                                             #   [--title T] [--alias A] [--json]
   todoforai-cli recommend --template <id>    # Add a template as a recommendation card (see 'todoregistry-cli create')
@@ -122,6 +124,7 @@ export function parseCliArgs() {
       title: { type: "string" },
       alias: { type: "string" },
       mime: { type: "string" },
+      card: { type: "string" },
       direction: { type: "string" },
       "business-context": { type: "string" },
       seed: { type: "string" },

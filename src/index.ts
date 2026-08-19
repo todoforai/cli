@@ -296,6 +296,20 @@ async function main() {
     return;
   }
 
+  if (positionals[0] === "show" && positionals[1] === "list") {
+    const todoId = positionals[2] || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    if (!todoId) { process.stderr.write(`${RED}Usage: todoforai-cli show list [todo-id]${RESET}\n`); process.exit(2); }
+    const { items } = await api.listShows(todoId, { card: args.card as string | undefined });
+    if (args.json) { console.log(JSON.stringify(items, null, 2)); return; }
+    if (items.length === 0) { process.stderr.write(`${DIM}No show blocks in ${todoId}${RESET}\n`); return; }
+    for (const it of items) {
+      const kind = it.url ? `url ${it.url}` : (it.mime || "");
+      const card = it.cardRef ? ` card=${it.cardRef}` : "";
+      console.log(`${it.ref}  ${it.title || it.filename || ""}  ${kind}${card}`);
+    }
+    return;
+  }
+
   if (positionals[0] === "show") {
     const [, filePath, todoArg] = positionals;
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
@@ -319,7 +333,7 @@ async function main() {
       name = path.basename(filePath);
     }
 
-    const res = await api.showFile(todoId, blob, name, { title: args.title, alias: args.alias, mime: args.mime });
+    const res = await api.showFile(todoId, blob, name, { title: args.title, alias: args.alias, mime: args.mime, card: args.card as string | undefined });
     if (args.json) console.log(JSON.stringify(res, null, 2));
     else console.log(res.ref);
     return;
