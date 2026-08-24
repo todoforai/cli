@@ -1,20 +1,25 @@
-/** Cross-platform config store — port of todoai_cli/config_store.py */
+/** Cross-platform config store. */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { homedir, platform } from "os";
 
-function getConfigDir(): string {
+function getConfigBase(): string {
   const sys = platform();
-  if (sys === "win32") {
-    const base = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-    return join(base, "todoai-cli");
+  if (sys === "win32") return process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  if (sys === "darwin") return join(homedir(), "Library", "Application Support");
+  return process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+}
+
+function getConfigDir(): string {
+  const base = getConfigBase();
+  const dir = join(base, "todoforai-cli");
+  // One-time migration from the legacy Python-era "todoai-cli" directory.
+  const legacy = join(base, "todoai-cli");
+  if (!existsSync(dir) && existsSync(legacy)) {
+    try { renameSync(legacy, dir); } catch { return legacy; }
   }
-  if (sys === "darwin") {
-    return join(homedir(), "Library", "Application Support", "todoai-cli");
-  }
-  const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  return join(xdg, "todoai-cli");
+  return dir;
 }
 
 /** Per-apiUrl state (project + agent + last todo). */

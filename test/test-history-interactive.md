@@ -23,7 +23,7 @@
 
 3. **Check config file**:
    ```bash
-   cat ~/.config/todoai-cli/config.json | jq .input_history
+   cat ~/.config/todoforai-cli/config.json | jq .input_history
    # Should show: ["first command", "second command", "third command"]
    ```
 

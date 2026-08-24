@@ -92,7 +92,7 @@ export function selectProject(
     return Promise.resolve({ id, name });
   }
 
-  // Use default
+  // Use cached default
   if (defaultId) {
     const match = projects.find((p) => getItemId(p) === defaultId);
     if (match) {
@@ -102,19 +102,34 @@ export function selectProject(
     }
   }
 
+  // The account's default project — final fallback so the CLI always works
+  // without --project, for humans and scripts alike.
+  const accountDefault = projects.find((p) => p?.project?.isDefault) || projects[0];
+
+  // Non-interactive (piped/scripted, no agent env): never prompt — a readline
+  // question on a non-TTY stdin would hang. Use the account default. Don't
+  // cache it: it wasn't the user's choice.
+  if (!process.stdin.isTTY) {
+    const id = getItemId(accountDefault);
+    const name = getDisplayName(accountDefault);
+    process.stderr.write(`Using account default project: ${name}\n`);
+    return Promise.resolve({ id, name });
+  }
+
   return (async () => {
+    const defIdx = projects.indexOf(accountDefault);
     process.stderr.write("\nPlease choose a project:\n\n");
     for (let i = 0; i < projects.length; i++) {
       const name = getDisplayName(projects[i]);
       const id = getItemId(projects[i]);
-      process.stderr.write(` [${i + 1}] ${name}\n`);
+      process.stderr.write(` [${i + 1}] ${name}${i === defIdx ? " (default)" : ""}\n`);
       if (id && id !== name) process.stderr.write(`     ${id}\n`);
     }
     process.stderr.write("\n");
 
     while (true) {
-      const choice = await terminalLine("Please enter your numeric choice: ");
-      const idx = parseInt(choice, 10) - 1;
+      const choice = await terminalLine(`Please enter your numeric choice [${defIdx + 1}]: `);
+      const idx = choice === "" ? defIdx : parseInt(choice, 10) - 1;
       if (idx >= 0 && idx < projects.length) {
         const id = getItemId(projects[idx]);
         const name = getDisplayName(projects[idx]);

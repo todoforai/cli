@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
-const testDir = mkdtempSync(join(tmpdir(), "todoai-test-"));
+const testDir = mkdtempSync(join(tmpdir(), "todoforai-test-"));
 const testConfig = join(testDir, "config.json");
 
 console.log("Testing history persistence...");

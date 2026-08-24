@@ -369,7 +369,7 @@ async function main() {
       process.stderr.write(`${DIM}Create a template first with: todoregistry-cli create --name ... --description ... --body @prompt.md${RESET}\n`);
       process.exit(2);
     }
-    let projectId = (args.project as string) || cfgScope.data.default_project_id;
+    let projectId = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
     if (!projectId) {
       const projects = await api.listProjects();
       projectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
@@ -400,7 +400,7 @@ async function main() {
   if (positionals[0] === "claim" && positionals[1] === "mint") {
     // Mint single-use /claim/<token> links that fork a project you own into a
     // fresh anonymous account per recipient. `--seed` (or --project/default).
-    let seedProjectId = (args.seed as string) || (args.project as string) || cfgScope.data.default_project_id;
+    let seedProjectId = (args.seed as string) || (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
     if (!seedProjectId) {
       const projects = await api.listProjects();
       seedProjectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
@@ -427,7 +427,7 @@ async function main() {
   }
 
   if (positionals[0] === "next") {
-    let projectId = (args.project as string) || cfgScope.data.default_project_id;
+    let projectId = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
     if (!projectId) {
       const projects = await api.listProjects();
       projectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
@@ -465,7 +465,7 @@ async function main() {
 
   // ── list todos (read-only) ──
   if (positionals[0] === "list" || positionals[0] === "ls") {
-    let defaultProjectId = (args.project as string) || cfgScope.data.default_project_id;
+    let defaultProjectId = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
     if (!defaultProjectId) {
       const projects = await api.listProjects();
       defaultProjectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
@@ -521,7 +521,7 @@ async function main() {
 
     // Resolve project — ignore a cached default the account can no longer access
     const projects = await api.listProjects();
-    let projectId = args.project as string;
+    let projectId = (args.project as string) || getEnv("PROJECT_ID");
     if (!projectId) {
       const cached = cfgScope.data.default_project_id;
       projectId = (cached && projects.some((p: any) => getItemId(p) === cached) ? cached : null)
@@ -693,7 +693,11 @@ async function main() {
   }
 
   // ── select project + agent ──
-  const hasProject = args.project || cfgScope.data.default_project_id;
+  // Env inheritance: an agent shell exports TODOFORAI_PROJECT_ID for its todo's
+  // project, so spun-off todos land in the SAME project by default instead of
+  // whatever project this machine's config last cached. --project still wins.
+  const envProjectId = getEnv("PROJECT_ID");
+  const hasProject = args.project || envProjectId || cfgScope.data.default_project_id;
   const storedAgent = cfgScope.data.default_agent_settings;
   const hasAgent = preMatchedAgent || (storedAgent?.id && !args.agent);
 
@@ -706,8 +710,8 @@ async function main() {
   // Select project
   let projectId: string;
   let projectName: string;
-  if (args.project) {
-    projectId = args.project as string;
+  if (args.project || envProjectId) {
+    projectId = (args.project as string) || envProjectId;
     projectName = projectId;
     if (projects) {
       const match = projects.find((p: any) => getItemId(p) === projectId);
@@ -761,7 +765,9 @@ async function main() {
     todo = await api.addMessage(projectId, content, agent, undefined, undefined, undefined, groupTag || undefined, groupName);
   } catch (e: any) {
     // Cached default project may belong to another account or be deleted.
-    if (!args.project && cfgScope.data.default_project_id === projectId && /failed: 403/.test(e.message || "")) {
+    // Only clear the cache when the cache actually picked the project — an
+    // env-selected (TODOFORAI_PROJECT_ID) 403 is not the cache's fault.
+    if (!args.project && !envProjectId && cfgScope.data.default_project_id === projectId && /failed: 403/.test(e.message || "")) {
       cfgScope.clearDefaultProject();
       process.stderr.write(`${RED}Not authorized for cached default project ${projectName} (${projectId}) — cleared it. Re-run to pick a project.${RESET}\n`);
       process.exit(1);

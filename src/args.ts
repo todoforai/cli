@@ -8,7 +8,7 @@ export const DEFAULT_API_URL = "https://api.todofor.ai";
 export const VERSION: string = pkg.version;
 
 export function getEnv(name: string): string {
-  return process.env[`TODOFORAI_${name}`] || process.env[`TODO4AI_${name}`] || "";
+  return (process.env[`TODOFORAI_${name}`] || process.env[`TODO4AI_${name}`] || "").trim();
 }
 
 export function printUsage() {
