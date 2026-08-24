@@ -297,11 +297,22 @@ async function main() {
   }
 
   if (positionals[0] === "show" && positionals[1] === "list") {
-    const todoId = positionals[2] || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!todoId) { process.stderr.write(`${RED}Usage: todoforai-cli show list [todo-id]${RESET}\n`); process.exit(2); }
-    const { items } = await api.listShows(todoId, { card: args.card as string | undefined });
+    // Positional todo-id wins. Explicit `--project` walks every todo so an
+    // agent can find instances in other chats. Bare `show list` in an agent
+    // shell still means this todo — both env vars are set there.
+    const explicitProject = !!(args.project as string);
+    const todoId = positionals[2] || (!explicitProject ? (getEnv("TODO_ID") || cfgScope.data.last_todo_id) : undefined);
+    const projectId = todoId ? undefined : ((args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id);
+    if (!todoId && !projectId) {
+      process.stderr.write(`${RED}Usage: todoforai-cli show list [todo-id] [--project <id>] [--card <name>]${RESET}\n`);
+      process.exit(2);
+    }
+    const { items } = await api.listShows({ todoId, projectId, card: args.card as string | undefined });
     if (args.json) { console.log(JSON.stringify(items, null, 2)); return; }
-    if (items.length === 0) { process.stderr.write(`${DIM}No show blocks in ${todoId}${RESET}\n`); return; }
+    if (items.length === 0) {
+      process.stderr.write(`${DIM}No show blocks in ${todoId || `project ${projectId}`}${RESET}\n`);
+      return;
+    }
     for (const it of items) {
       const kind = it.url ? `url ${it.url}` : (it.mime || "");
       const card = it.cardRef ? ` card=${it.cardRef}` : "";
