@@ -13,35 +13,35 @@ export function getEnv(name: string): string {
 
 export function printUsage() {
   process.stderr.write(`
-todoforai-cli — TODOforAI CLI (Bun). Aliases: tfa-cli, todoai.
+tfa-cli — TODOforAI CLI (Bun). Legacy aliases: todoforai-cli, todoai.
 
 Usage:
-  todoforai-cli login                          # Browser-based device auth
-  todoforai-cli "prompt text"                  # Prompt as argument
-  todoforai-cli -n "Quick task"               # Non-interactive (run and exit)
-  echo "content" | todoforai-cli              # Pipe from stdin
-  todoforai-cli --path /my/project "Fix bug"  # Explicit workspace path
-  todoforai-cli -c ["prompt"]                 # Resume last todo (optional prompt sent on attach)
-  todoforai-cli --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
-  todoforai-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
-  todoforai-cli start <id>                    # Start a TODO from the registry (todoregistry.com)
-  todoforai-cli --list-agents                 # List available agents and exit
-  todoforai-cli --list-models [filter]        # List models usable with --model and exit
-  todoforai-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
-  todoforai-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
-  todoforai-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
-  todoforai-cli delete <todo-id>              # Permanently delete a todo
-  todoforai-cli addmessage <todo-id> "text"  # Add a message to an existing todo
-  todoforai-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
+  tfa-cli login                          # Browser-based device auth
+  tfa-cli "prompt text"                  # Prompt as argument
+  tfa-cli -n "Quick task"               # Non-interactive (run and exit)
+  echo "content" | tfa-cli              # Pipe from stdin
+  tfa-cli --path /my/project "Fix bug"  # Explicit workspace path
+  tfa-cli -c ["prompt"]                 # Resume last todo (optional prompt sent on attach)
+  tfa-cli --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
+  tfa-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
+  tfa-cli start <id>                    # Start a TODO from the registry (todoregistry.com)
+  tfa-cli --list-agents                 # List available agents and exit
+  tfa-cli --list-models [filter]        # List models usable with --model and exit
+  tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
+  tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
+  tfa-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
+  tfa-cli delete <todo-id>              # Permanently delete a todo
+  tfa-cli addmessage <todo-id> "text"  # Add a message to an existing todo
+  tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
                                             #   [--title T] [--alias A] [--mime M] [--card <name>] [--json]
-  todoforai-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
+  tfa-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
                                             #   [--project <id>] [--card <name>] [--json]
                                             #   no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
-  todoforai-cli open <url> [todo-id]        # Show a live http(s) url in the chat as a preview
+  tfa-cli open <url> [todo-id]        # Show a live http(s) url in the chat as a preview
                                             #   [--title T] [--alias A] [--json]
-  todoforai-cli recommend --template <id>    # Add a template as a recommendation card (see 'todoregistry-cli create')
-  todoforai-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> ownership links for a project you own
-  todoforai-cli next [--direction "<text>"]  # Ask the analyzer for growth recommendation cards (optional free-text steer)
+  tfa-cli recommend --template <id>    # Add a template as a recommendation card (see 'todoregistry-cli create')
+  tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> ownership links for a project you own
+  tfa-cli next [--direction "<text>"]  # Ask the analyzer for growth recommendation cards (optional free-text steer)
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -92,7 +92,7 @@ const STATUS_HELP: Partial<Record<TodoStatus, string>> = {
 
 export function printStatusHelp() {
   process.stderr.write(`
-todoforai-cli status <todo-id> <STATUS>
+tfa-cli status <todo-id> <STATUS>
 
 Common statuses:
 ${Object.entries(STATUS_HELP).map(([s, d]) => `  ${s.padEnd(18)}${d}`).join("\n")}

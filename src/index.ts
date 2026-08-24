@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * TODOforAI CLI (Bun) — Create and manage todos
- * Usage: todoforai-cli "prompt text" | echo "content" | todoforai-cli [options]
+ * Usage: tfa-cli "prompt text" | echo "content" | todoforai-cli [options]
  */
 
 import { realpathSync, readFileSync } from "fs";
@@ -132,7 +132,7 @@ async function main() {
   // `start <id>` is sugar for `--template <id>`
   if (positionals[0] === "start") {
     if (!positionals[1] && !args.template) {
-      process.stderr.write(`${RED}Usage: todoforai-cli start <todo-id>${RESET}\n`);
+      process.stderr.write(`${RED}Usage: tfa-cli start <todo-id>${RESET}\n`);
       process.exit(2);
     }
     if (!args.template) args.template = positionals[1];
@@ -277,7 +277,7 @@ async function main() {
   }
   if (positionals[0] === "delete") {
     const todoId = positionals[1];
-    if (!todoId) { process.stderr.write(`${RED}Usage: todoforai-cli delete <todo-id>${RESET}\n`); process.exit(2); }
+    if (!todoId) { process.stderr.write(`${RED}Usage: tfa-cli delete <todo-id>${RESET}\n`); process.exit(2); }
     await api.deleteTodo(todoId);
     process.stderr.write(`${GREEN}✅ Deleted ${todoId}${RESET}\n`);
     return;
@@ -285,7 +285,7 @@ async function main() {
   if (positionals[0] === "addmessage") {
     const [, todoId, ...rest] = positionals;
     const content = rest.join(" ") || (await readStdin());
-    if (!todoId || !content) { process.stderr.write(`${RED}Usage: todoforai-cli addmessage <todo-id> "content"${RESET}\n`); process.exit(2); }
+    if (!todoId || !content) { process.stderr.write(`${RED}Usage: tfa-cli addmessage <todo-id> "content"${RESET}\n`); process.exit(2); }
     const todo = await api.getTodo(todoId);
     // getTodo only returns agentSettingsId; addMessage needs the full settings
     // (the API asserts id+name+…), so fetch them when not inlined.
@@ -304,7 +304,7 @@ async function main() {
     const todoId = positionals[2] || (!explicitProject ? (getEnv("TODO_ID") || cfgScope.data.last_todo_id) : undefined);
     const projectId = todoId ? undefined : ((args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id);
     if (!todoId && !projectId) {
-      process.stderr.write(`${RED}Usage: todoforai-cli show list [todo-id] [--project <id>] [--card <name>]${RESET}\n`);
+      process.stderr.write(`${RED}Usage: tfa-cli show list [todo-id] [--project <id>] [--card <name>]${RESET}\n`);
       process.exit(2);
     }
     const { items } = await api.listShows({ todoId, projectId, card: args.card as string | undefined });
@@ -326,7 +326,7 @@ async function main() {
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
     const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: todoforai-cli show <file|-> [todo-id]${RESET}\n`); process.exit(2); }
+    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
     // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
@@ -353,7 +353,7 @@ async function main() {
   if (positionals[0] === "open") {
     const [, url, todoArg] = positionals;
     const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!url || !todoId) { process.stderr.write(`${RED}Usage: todoforai-cli open <url> [todo-id]${RESET}\n`); process.exit(2); }
+    if (!url || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli open <url> [todo-id]${RESET}\n`); process.exit(2); }
     const res = await api.showUrl(todoId, url, { title: args.title, alias: args.alias });
     if (args.json) console.log(JSON.stringify(res, null, 2));
     else console.log(res.ref);
@@ -365,7 +365,7 @@ async function main() {
     // Templates are created by `todoregistry-cli create` (which prints the id).
     const templateId = (args.template as string) || positionals[1];
     if (!templateId) {
-      process.stderr.write(`${RED}Usage: todoforai-cli recommend --template <id> [--note "why"] [--priority high|medium|low] [--title "..."] [--group <slug> [--group-name "..."] [--group-description "..."]] [--project <id>]${RESET}\n`);
+      process.stderr.write(`${RED}Usage: tfa-cli recommend --template <id> [--note "why"] [--priority high|medium|low] [--title "..."] [--group <slug> [--group-name "..."] [--group-description "..."]] [--project <id>]${RESET}\n`);
       process.stderr.write(`${DIM}Create a template first with: todoregistry-cli create --name ... --description ... --body @prompt.md${RESET}\n`);
       process.exit(2);
     }
@@ -405,7 +405,7 @@ async function main() {
       const projects = await api.listProjects();
       seedProjectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
     }
-    if (!seedProjectId) { process.stderr.write(`${RED}Usage: todoforai-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]${RESET}\n`); process.exit(2); }
+    if (!seedProjectId) { process.stderr.write(`${RED}Usage: tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]${RESET}\n`); process.exit(2); }
     const emails = (args.emails as string | undefined)?.split(",").map((e) => e.trim()).filter(Boolean);
     let ttlSec: number | undefined;
     if (args.ttl !== undefined) {

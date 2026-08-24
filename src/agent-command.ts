@@ -8,13 +8,13 @@ import { BRAND, CYAN, DIM, GREEN, RED, RESET } from "./colors";
 
 export function printAgentHelp() {
   process.stderr.write(`
-todoforai-cli agent — inspect and update agent settings
+tfa-cli agent — inspect and update agent settings
 
 Usage:
-  todoforai-cli agent list                            List agents (name, model, id, paths)
-  todoforai-cli agent get <agent>                     Show a single agent's settings
-  todoforai-cli agent update <agent> <field=value>…   Update one or more settings
-  todoforai-cli agent delete <agent>                  Delete an agent configuration (asks to confirm)
+  tfa-cli agent list                            List agents (name, model, id, paths)
+  tfa-cli agent get <agent>                     Show a single agent's settings
+  tfa-cli agent update <agent> <field=value>…   Update one or more settings
+  tfa-cli agent delete <agent>                  Delete an agent configuration (asks to confirm)
 
 <agent> is a name or id (unique partial name also works).
 Fields map directly to agent settings; values are parsed as JSON when possible
@@ -27,9 +27,9 @@ Fields map directly to agent settings; values are parsed as JSON when possible
   name            agent display name
 
 Examples:
-  todoforai-cli agent update <agent> model=claude
-  todoforai-cli agent update <agent> model=anthropic:anthropic/claude-opus-5 temperature=0.5
-  todoforai-cli agent update <agent> sysmsg="You are a terse video editor."
+  tfa-cli agent update <agent> model=claude
+  tfa-cli agent update <agent> model=anthropic:anthropic/claude-opus-5 temperature=0.5
+  tfa-cli agent update <agent> sysmsg="You are a terse video editor."
 `);
 }
 
@@ -91,7 +91,7 @@ export async function agentCommand(
   if (sub === "update") {
     const query = positionals[2];
     const assignments = positionals.slice(3);
-    if (!query || !assignments.length) { process.stderr.write(`${RED}Usage: todoforai-cli agent update <name|id> <field=value>…${RESET}\n`); process.exit(2); }
+    if (!query || !assignments.length) { process.stderr.write(`${RED}Usage: tfa-cli agent update <name|id> <field=value>…${RESET}\n`); process.exit(2); }
     const updates = Object.fromEntries(assignments.map(parseAssignment));
     const agents = await api.listAgentSettings();
     const agent = resolveAgent(agents, query);
@@ -105,7 +105,7 @@ export async function agentCommand(
 
   if (sub === "delete" || sub === "rm") {
     const query = positionals[2];
-    if (!query) { process.stderr.write(`${RED}Usage: todoforai-cli agent delete <name|id>${RESET}\n`); process.exit(2); }
+    if (!query) { process.stderr.write(`${RED}Usage: tfa-cli agent delete <name|id>${RESET}\n`); process.exit(2); }
     const agents = await api.listAgentSettings();
     const agent = resolveAgent(agents, query);
     const name = getDisplayName(agent);
