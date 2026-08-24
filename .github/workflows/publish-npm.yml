@@ -14,6 +14,9 @@ jobs:
 
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
+      with:
+        # 1.4.0 on GH runners fails nested file: deps (@shared/api → @shared/credentials).
+        bun-version: "1.3.14"
 
     - name: Set up Node
       uses: actions/setup-node@v4
@@ -30,6 +33,7 @@ jobs:
       # in place or the bundler can't resolve @shared/* from their sources.
       run: |
         bun install
+        (cd ../packages/shared-credentials && bun install)
         (cd ../packages/shared-api && bun install)
 
     - name: Resolve version & publish
