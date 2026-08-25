@@ -162,7 +162,6 @@ export function readMultiline(prompt: string, history?: string[]): { promise: Pr
         params += chunk[i];
         i++;
       }
-      // Final byte (letter or ~)
       const final = i < chunk.length ? chunk[i] : "";
       i++; // skip final byte
 

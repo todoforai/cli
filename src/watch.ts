@@ -100,7 +100,6 @@ export async function watchTodo(
   let approveAll = !!opts.autoApprove;
   let interruptCount = 0;
 
-  // Set up Ctrl+C handler
   const origHandler = process.listeners("SIGINT").slice();
   process.removeAllListeners("SIGINT");
   process.on("SIGINT", () => {
@@ -115,7 +114,6 @@ export async function watchTodo(
     }
   });
 
-  // Pending approval blocks
   const pendingBlocks: any[] = [];
   let approvalPromptActive = false;
   // Blocks currently shown in approval prompt (for late-arriving diff rendering)

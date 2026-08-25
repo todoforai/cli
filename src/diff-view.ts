@@ -161,7 +161,6 @@ export function renderDiff(originalContent: string, modifiedContent: string, fil
     if (op === 0) {
       const chunk = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
       for (const line of chunk) {
-        // Use syntax-highlighted version for context lines
         const syntaxLine = origSyntaxLines[origLine - 1] ?? line;
         lines.push({ op: 0, text: syntaxLine, origLine, modLine });
         origLine++;

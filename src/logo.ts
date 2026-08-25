@@ -45,7 +45,6 @@ function renderHalfBlock(top: string, bot: string): string {
 }
 
 function renderLogo(): string[] {
-  // Build 6 pixel rows
   const rows: string[] = [];
   for (let r = 0; r < 6; r++) {
     let row = "";
@@ -56,7 +55,6 @@ function renderLogo(): string[] {
     rows.push(row);
   }
 
-  // Pair rows into 3 half-block lines
   const lines: string[] = [];
   for (let pair = 0; pair < 3; pair++) {
     let topRow = rows[pair * 2];

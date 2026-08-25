@@ -92,7 +92,6 @@ export function selectProject(
     return Promise.resolve({ id, name });
   }
 
-  // Use cached default
   if (defaultId) {
     const match = projects.find((p) => getItemId(p) === defaultId);
     if (match) {

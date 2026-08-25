@@ -118,7 +118,6 @@ async function interactiveLoop(
 // ── main ─────────────────────────────────────────────────────────────
 
 async function main() {
-  // Handle SIGINT
   process.on("SIGINT", () => {
     process.stderr.write("\nCancelled by user (Ctrl+C)\n");
     process.exit(130);
