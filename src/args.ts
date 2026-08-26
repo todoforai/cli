@@ -65,6 +65,8 @@ Options:
   --allow-all                     Set permissions to allow all tools (no approval needed)
   --raw-sysmsg <file>             Use file contents verbatim as system prompt (new TODO only)
   --no-watch                      Create todo and exit
+  --isolated                      Spawn an ephemeral, task-scoped bridge: the agent sees ONLY
+                                  this machine (workspace = --path/cwd); session dies with the CLI
   --no-bridge                     Do not auto-spawn bridge
   --no-edge                       Deprecated alias for --no-bridge
   --json                          Output as JSON
@@ -138,6 +140,7 @@ export function parseCliArgs() {
       "allow-all": { type: "boolean", default: false },
       "raw-sysmsg": { type: "string" },
       "no-watch": { type: "boolean", default: false },
+      isolated: { type: "boolean", default: false },
       "no-bridge": { type: "boolean", default: false },
       "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },

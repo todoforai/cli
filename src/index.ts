@@ -36,6 +36,7 @@ import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { ensureBridgeRunning } from "./ensure-bridge";
+import { spawnMayflyBridge } from "./isolated";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -580,6 +581,13 @@ async function main() {
 
   // ── resume mode ──
   if (args.resume || args.continue) {
+    // A resumed todo's snapshot was taken at create time; re-binding a fresh
+    // mayfly to an existing todo is unsupported (and would silently NOT
+    // isolate today) — fail loud instead.
+    if (args.isolated) {
+      process.stderr.write("Error: --isolated cannot be combined with --resume/--continue (isolation binds at create)\n");
+      process.exit(2);
+    }
     if (!args["no-bridge"]) await ensureBridgeRunning(apiUrl, apiKey);
     const todoId = (args.resume as string) || cfgScope.data.last_todo_id;
     if (!todoId) { process.stderr.write("Error: No recent todo found\n"); process.exit(1); }
@@ -623,12 +631,30 @@ async function main() {
     process.exit(2);
   }
 
+  // The isolated bridge lives only as long as this CLI process — exiting right
+  // after create (--no-watch) would kill it before the agent ever uses it.
+  if (args.isolated && args["no-watch"]) {
+    process.stderr.write("Error: --isolated requires watching the run (drop --no-watch)\n");
+    process.exit(2);
+  }
+
   // ── start independent work early ──
   const ws = args["no-watch"] ? null : new FrontendWebSocket(apiUrl, apiKey);
   const wsReady = ws ? ws.connect() : null;
-  const bridgeReady = !args["no-bridge"] && !args["no-watch"]
+  // --isolated replaces the persistent bridge with its own ephemeral one, so
+  // never auto-spawn the daemon alongside it.
+  const bridgeReady = !args["no-bridge"] && !args["no-watch"] && !args.isolated
     ? ensureBridgeRunning(apiUrl, apiKey)
     : null;
+  // Ephemeral todo-scoped bridge (mayfly): the todoId is minted HERE so the
+  // bridge can register under `mayfly-<todoId>` before the todo exists; the
+  // create below then reuses the same id. Workspace = --path/cwd. While the
+  // bridge lives, the backend scopes this todo's dispatches to EXACTLY it.
+  const isolatedTodoId = args.isolated ? crypto.randomUUID() : undefined;
+  const mayfly = isolatedTodoId
+    ? await spawnMayflyBridge(apiUrl, isolatedTodoId, realpathSync(resolve((args.path as string) || ".")), { debug: !!args.debug })
+    : null;
+  if (mayfly) process.stderr.write(`${DIM}Isolated bridge:${RESET} ${CYAN}mayfly-${isolatedTodoId}${RESET}\n`);
 
   // ── pre-resolve agent by --agent name or --path ──
   let preMatchedAgent: any = null;
@@ -761,7 +787,7 @@ async function main() {
   cfg.addToHistory(content);
   let todo: any;
   try {
-    todo = await api.addMessage(projectId, content, agent, undefined, undefined, undefined, groupTag || undefined, groupName);
+    todo = await api.addMessage(projectId, content, agent, isolatedTodoId, undefined, undefined, groupTag || undefined, groupName);
   } catch (e: any) {
     // Cached default project may belong to another account or be deleted.
     // Only clear the cache when the cache actually picked the project — an
@@ -805,6 +831,7 @@ async function main() {
 
     await ws.close();
   }
+  mayfly?.stop();
 }
 
 // Preserve any exit code set during the run (e.g. watchTodo on a non-success

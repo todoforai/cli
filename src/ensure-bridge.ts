@@ -6,7 +6,7 @@ import path from "path";
 import os from "os";
 import { ApiClient } from "@shared/api";
 
-function hasBridge(): boolean {
+export function hasBridge(): boolean {
   const probe = spawnSync("todoforai-bridge", ["--version"], { stdio: "ignore" });
   return probe.status === 0;
 }
@@ -36,7 +36,7 @@ function withProfile(args: string[], apiUrl: string): string[] {
   return profile ? [...args, "--profile", profile] : args;
 }
 
-function bridgeRunArgs(apiUrl: string): string[] {
+export function bridgeRunArgs(apiUrl: string): string[] {
   const url = parseApiUrl(apiUrl);
   if (!url) return [];
 
@@ -75,7 +75,7 @@ export function bridgeDeviceId(apiUrl: string): string | null {
   return m ? m[1] : null;
 }
 
-function ensureBridgeCredentials(apiUrl: string): boolean {
+export function ensureBridgeCredentials(apiUrl: string): boolean {
   const whoami = spawnSync("todoforai-bridge", bridgeWhoamiArgs(apiUrl), { stdio: "ignore" });
   if (whoami.status === 0) return true;
 
