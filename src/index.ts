@@ -145,6 +145,28 @@ async function main() {
   // Subcommands with their own --help handle it themselves.
   if (args.help && !["list", "ls", "agent"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
+  // ── flag compatibility — validated ONCE here, so no later branch can
+  // silently ignore a flag (e.g. --template returning before an --isolated
+  // check would fake isolation without providing it) ──
+  if (args.isolated) {
+    if (args.resume || args.continue) {
+      process.stderr.write("Error: --isolated cannot be combined with --resume/--continue (isolation binds at create)\n");
+      process.exit(2);
+    }
+    // The isolated bridge lives only as long as this CLI process — exiting right
+    // after create (--no-watch) would kill it before the agent ever uses it.
+    if (args["no-watch"]) {
+      process.stderr.write("Error: --isolated requires watching the run (drop --no-watch)\n");
+      process.exit(2);
+    }
+    // startFromSpec has no pre-minted-todoId path yet, so a template run cannot
+    // bind a mayfly at create — fail loud rather than start unisolated.
+    if (args.template) {
+      process.stderr.write("Error: --isolated does not support --template yet\n");
+      process.exit(2);
+    }
+  }
+
   // ensureBridgeRunning is intentionally NOT called here — it's invoked
   // per-branch below, only on paths that actually need the bridge daemon
   // (template / resume / create-todo). Read-only paths (--list-agents, --list-models,
@@ -581,13 +603,6 @@ async function main() {
 
   // ── resume mode ──
   if (args.resume || args.continue) {
-    // A resumed todo's snapshot was taken at create time; re-binding a fresh
-    // mayfly to an existing todo is unsupported (and would silently NOT
-    // isolate today) — fail loud instead.
-    if (args.isolated) {
-      process.stderr.write("Error: --isolated cannot be combined with --resume/--continue (isolation binds at create)\n");
-      process.exit(2);
-    }
     if (!args["no-bridge"]) await ensureBridgeRunning(apiUrl, apiKey);
     const todoId = (args.resume as string) || cfgScope.data.last_todo_id;
     if (!todoId) { process.stderr.write("Error: No recent todo found\n"); process.exit(1); }
@@ -628,13 +643,6 @@ async function main() {
 
   if (args["user-id"] && !args["no-watch"]) {
     process.stderr.write("Error: --user-id uses admin HTTP impersonation and requires --no-watch\n");
-    process.exit(2);
-  }
-
-  // The isolated bridge lives only as long as this CLI process — exiting right
-  // after create (--no-watch) would kill it before the agent ever uses it.
-  if (args.isolated && args["no-watch"]) {
-    process.stderr.write("Error: --isolated requires watching the run (drop --no-watch)\n");
     process.exit(2);
   }
 
