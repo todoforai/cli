@@ -21,13 +21,21 @@ export async function spawnMayflyBridge(
   apiUrl: string,
   todoId: string,
   workspace: string,
-  opts: { timeoutMs?: number; debug?: boolean } = {},
+  opts: { timeoutMs?: number; debug?: boolean; apiKey?: string } = {},
 ): Promise<MayflySession> {
   if (!hasBridge()) throw new Error("--isolated requires `todoforai-bridge` on PATH.");
-  if (!ensureBridgeCredentials(apiUrl)) throw new Error("`todoforai-bridge login` did not complete.");
+  // Login-less path: a real API key (not a dst_ device-session token) lets the
+  // bridge authenticate directly — no `login`, no credentials.json, no Device
+  // row. This is what makes --isolated work in fresh containers/CI with only
+  // an API key in the environment. dst_ tokens aren't API keys, so those (and
+  // keyless runs) fall back to the device-credential flow.
+  const loginless = !!opts.apiKey && !opts.apiKey.startsWith("dst_");
+  if (!loginless && !ensureBridgeCredentials(apiUrl)) throw new Error("`todoforai-bridge login` did not complete.");
 
   const args = [...bridgeRunArgs(apiUrl), "--mayfly", todoId, "--workspace", workspace];
-  const child = spawn("todoforai-bridge", args, { stdio: ["ignore", "pipe", "pipe"] });
+  // Key travels via env, not argv — argv is world-readable in `ps`.
+  const env = loginless ? { ...process.env, TODOFORAI_MAYFLY_API_KEY: opts.apiKey! } : process.env;
+  const child = spawn("todoforai-bridge", args, { stdio: ["ignore", "pipe", "pipe"], env });
 
   let stopped = false;
   const stop = () => {
@@ -44,19 +52,29 @@ export async function spawnMayflyBridge(
   await new Promise<void>((resolvePromise, reject) => {
     const timeoutMs = opts.timeoutMs ?? 15_000;
     let buf = "";
+    // Keep the bridge's own diagnosis ("API key rejected by server.") so a
+    // failure reports its cause instead of a bare readiness timeout.
+    let lastErr = "";
     const timer = setTimeout(() => {
       stop();
-      reject(new Error(`Isolated bridge not ready after ${timeoutMs / 1000}s.`));
+      reject(new Error(`Isolated bridge not ready after ${timeoutMs / 1000}s.${lastErr ? ` ${lastErr}` : ""}`));
     }, timeoutMs);
     child.stdout!.on("data", (d: Buffer) => {
       buf += d.toString();
       if (readyRx.test(buf)) { clearTimeout(timer); resolvePromise(); }
     });
-    if (opts.debug) child.stderr!.on("data", (d: Buffer) => process.stderr.write(d));
-    else child.stderr!.resume();
+    child.stderr!.on("data", (d: Buffer) => {
+      const s = d.toString();
+      const err = s.match(/^error: .*$/m);
+      if (err) lastErr = err[0];
+      if (opts.debug) process.stderr.write(d);
+    });
     child.on("error", (err) => { clearTimeout(timer); reject(err); });
     child.on("exit", (code) => {
-      if (!stopped) { clearTimeout(timer); reject(new Error(`Isolated bridge exited early (code ${code}).`)); }
+      if (!stopped) {
+        clearTimeout(timer);
+        reject(new Error(lastErr || `Isolated bridge exited early (code ${code}).`));
+      }
     });
   });
 

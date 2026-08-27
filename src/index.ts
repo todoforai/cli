@@ -660,7 +660,7 @@ async function main() {
   // bridge lives, the backend scopes this todo's dispatches to EXACTLY it.
   const isolatedTodoId = args.isolated ? crypto.randomUUID() : undefined;
   const mayfly = isolatedTodoId
-    ? await spawnMayflyBridge(apiUrl, isolatedTodoId, realpathSync(resolve((args.path as string) || ".")), { debug: !!args.debug })
+    ? await spawnMayflyBridge(apiUrl, isolatedTodoId, realpathSync(resolve((args.path as string) || ".")), { debug: !!args.debug, apiKey })
     : null;
   if (mayfly) process.stderr.write(`${DIM}Isolated bridge:${RESET} ${CYAN}mayfly-${isolatedTodoId}${RESET}\n`);
 
