@@ -9,12 +9,33 @@
  * device snapshot. */
 
 import { spawn, type ChildProcess } from "child_process";
+import { restBasePath } from "@shared/api";
 import { bridgeRunArgs, ensureBridgeCredentials, hasBridge } from "./ensure-bridge";
 
 export interface MayflySession {
   child: ChildProcess;
   /** SIGTERM the bridge; idempotent. */
   stop: () => void;
+}
+
+/** Trade the API key for a short-lived token scoped to this one todo.
+ *
+ * The bridge spawns the agent's PTYs, and a process environment is inherited,
+ * not sandboxed — so the durable key must never get that close. This token is
+ * worth one todo for a few minutes and is rejected by the REST API outright,
+ * which also means the bridge's first-connect TOFU exposes only that. */
+async function mintMayflyToken(apiUrl: string, apiKey: string, todoId: string): Promise<string> {
+  const res = await fetch(`${apiUrl}${restBasePath(apiKey)}/cli/mayfly/token`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": apiKey },
+    body: JSON.stringify({ todoId }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`--isolated: could not mint a session token (${res.status} ${text.slice(0, 200)}).`);
+  const token = JSON.parse(text)?.token;
+  if (typeof token !== "string" || !token) throw new Error("--isolated: token mint returned no token.");
+  return token;
 }
 
 export async function spawnMayflyBridge(
@@ -24,17 +45,29 @@ export async function spawnMayflyBridge(
   opts: { timeoutMs?: number; debug?: boolean; apiKey?: string } = {},
 ): Promise<MayflySession> {
   if (!hasBridge()) throw new Error("--isolated requires `todoforai-bridge` on PATH.");
-  // Login-less path: a real API key (not a dst_ device-session token) lets the
-  // bridge authenticate directly — no `login`, no credentials.json, no Device
-  // row. This is what makes --isolated work in fresh containers/CI with only
-  // an API key in the environment. dst_ tokens aren't API keys, so those (and
-  // keyless runs) fall back to the device-credential flow.
+  // Login-less path: a real API key (not a dst_ device-session token, which
+  // can't mint) lets us hand the bridge a scoped token instead of a device
+  // identity — no `login`, no credentials.json, no Device row. This is what
+  // makes --isolated work in fresh containers/CI with only an API key in the
+  // environment. Keyless runs and dst_ tokens fall back to device credentials.
   const loginless = !!opts.apiKey && !opts.apiKey.startsWith("dst_");
   if (!loginless && !ensureBridgeCredentials(apiUrl)) throw new Error("`todoforai-bridge login` did not complete.");
+  const sessionToken = loginless ? await mintMayflyToken(apiUrl, opts.apiKey!, todoId) : null;
 
   const args = [...bridgeRunArgs(apiUrl), "--mayfly", todoId, "--workspace", workspace];
-  // Key travels via env, not argv — argv is world-readable in `ps`.
-  const env = loginless ? { ...process.env, TODOFORAI_MAYFLY_API_KEY: opts.apiKey! } : process.env;
+  // Token travels via env, not argv — argv is world-readable in `ps`.
+  //
+  // And the durable key must NOT: in CI it arrives as TODOFORAI_API_TOKEN, so a
+  // plain `...process.env` would hand the bridge (and therefore every agent
+  // shell that inherits from it) the very credential this whole exchange exists
+  // to keep out. Drop every alias getEnv() would read — see args.ts — plus the
+  // variable an older bridge used for the same job.
+  const env = { ...process.env };
+  if (sessionToken) {
+    for (const n of ["API_TOKEN", "MAYFLY_API_KEY"])
+      for (const p of ["TODOFORAI_", "TODO4AI_"]) delete env[p + n];
+    env.TODOFORAI_MAYFLY_TOKEN = sessionToken;
+  }
   const child = spawn("todoforai-bridge", args, { stdio: ["ignore", "pipe", "pipe"], env });
 
   let stopped = false;
@@ -52,8 +85,8 @@ export async function spawnMayflyBridge(
   await new Promise<void>((resolvePromise, reject) => {
     const timeoutMs = opts.timeoutMs ?? 15_000;
     let buf = "";
-    // Keep the bridge's own diagnosis ("API key rejected by server.") so a
-    // failure reports its cause instead of a bare readiness timeout.
+    // Keep the bridge's own diagnosis ("session token rejected") so a failure
+    // reports its cause instead of a bare readiness timeout.
     let lastErr = "";
     const timer = setTimeout(() => {
       stop();
