@@ -22,6 +22,8 @@ const DETAILED_ONLY = new Set([
   "agentSettingsId", "scheduledTimestamp", "workflowVersion",
   "todoId", "blockId", "parentBlockId",
   "stop_sequence", "permissions", "isPublic", "metadata",
+  // Present on some assistant messages (e.g. dev-mode turns).
+  "systemPrompt", "toolSchemas",
 ]);
 // Kept only in --debug.
 const DEBUG_ONLY = new Set([
@@ -147,6 +149,8 @@ export function toAnthropicShape(
     if (mode !== "default") {
       if (m.id) msg.id = m.id;
       if (m.createdAt) msg.createdAt = m.createdAt;
+      if (m.systemPrompt !== undefined) msg.systemPrompt = m.systemPrompt;
+      if (m.toolSchemas !== undefined) msg.toolSchemas = m.toolSchemas;
     }
     if (m.role === "user") {
       const atts = (m.attachments ?? [])
