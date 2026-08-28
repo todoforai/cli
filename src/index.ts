@@ -274,6 +274,21 @@ async function main() {
     apiKey = await deviceLogin();
   }
 
+  // --debug-dump: forward TODOFORAI_DEBUG_SECRET as x-tfa-debug; the server
+  // decides whether to grant per-turn request capture.
+  if (args["debug-dump"]) {
+    const debugSecret = getEnv("DEBUG_SECRET");
+    if (!debugSecret) {
+      process.stderr.write("Error: --debug-dump requires TODOFORAI_DEBUG_SECRET\n");
+      process.exit(2);
+    }
+    // Merge, don't clobber: ApiClient reads TODOFORAI_EXTRA_HEADERS per request.
+    let extraHeaders: Record<string, string> = {};
+    try { extraHeaders = JSON.parse(process.env.TODOFORAI_EXTRA_HEADERS || "{}"); } catch { /* malformed -> start fresh */ }
+    extraHeaders["x-tfa-debug"] = debugSecret;
+    process.env.TODOFORAI_EXTRA_HEADERS = JSON.stringify(extraHeaders);
+  }
+
   const api = new ApiClient(apiUrl, apiKey, args["user-id"] as string | undefined);
 
   if (args["user-id"] && args.safe) {

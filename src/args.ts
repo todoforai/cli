@@ -74,6 +74,7 @@ Options:
   --format-anthropic              'inspect --json': Anthropic-style shape (tool_result in next user msg); attachment sources are uri-typed, so not a 1:1 messages.create input
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
+  --debug-dump                    Attach LLM request debug info per turn (requires server grant)
   --show-config                   Show config
   --reset-config                  Reset config file
   --version, -v                   Print version and exit
@@ -141,6 +142,7 @@ export function parseCliArgs() {
       "raw-sysmsg": { type: "string" },
       "no-watch": { type: "boolean", default: false },
       isolated: { type: "boolean", default: false },
+      "debug-dump": { type: "boolean", default: false },
       "no-bridge": { type: "boolean", default: false },
       "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
