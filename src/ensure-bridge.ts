@@ -41,17 +41,19 @@ export function bridgeRunArgs(apiUrl: string): string[] {
   if (!url) return [];
 
   // `todoforai-bridge --port` is the bridge HTTP/WS port (80 prod, 4000 dev),
-  // not the public HTTPS API port. Only carry an API URL port through for local
-  // dev, where `http://localhost:4000` maps directly to the bridge endpoint.
-  if (isLocalHost(url.hostname)) {
+  // not the public HTTPS API port. Carry an EXPLICIT port through for any
+  // self-hosted backend — `http://<host>:4000` maps directly to the bridge
+  // endpoint whether <host> is loopback, a LAN/docker-gateway IP (bench runs
+  // reach the host as 172.17.0.1) or a hostname. Keying this on loopback-only
+  // dropped the port for every other host, so the bridge silently dialled :80
+  // and the caller just saw "Isolated bridge not ready after 15s".
+  if (url.hostname && url.hostname !== "api.todofor.ai") {
     const args = ["--host", url.hostname];
     if (url.port) args.push("--port", url.port);
     return withProfile(args, apiUrl);
   }
 
-  // Production defaults to api.todofor.ai:80 internally. For custom backends,
-  // pass the host but let bridge pick its default plaintext bridge port.
-  if (url.hostname && url.hostname !== "api.todofor.ai") return withProfile(["--host", url.hostname], apiUrl);
+  // Production defaults to api.todofor.ai:80 internally.
   return [];
 }
 
