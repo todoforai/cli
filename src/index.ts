@@ -859,7 +859,18 @@ async function main() {
 
 // Preserve any exit code set during the run (e.g. watchTodo on a non-success
 // terminal status); `process.exit(0)` would mask a failed run as success.
-main().then(() => process.exit(process.exitCode ?? 0)).catch((e) => {
+// Under bun, process.exit() discards buffered pipe writes, truncating
+// `list --json | jq` at 64 KiB. Exit only once stdout's buffer is empty;
+// poll instead of waiting for a natural exit so a lingering handle (ws,
+// timer) can't delay or hang the CLI.
+const finish = (code: number) => {
+  process.exitCode = code;
+  const poll = setInterval(() => {
+    if ((process.stdout as any).writableLength === 0) process.exit(code);
+  }, 5);
+  poll.unref?.();
+};
+main().then(() => finish(process.exitCode ?? 0)).catch((e) => {
   process.stderr.write(`Error: ${e.message}\n`);
-  process.exit(1);
+  finish(1);
 });
