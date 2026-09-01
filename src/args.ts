@@ -33,7 +33,8 @@ Usage:
   tfa-cli delete <todo-id>              # Permanently delete a todo
   tfa-cli addmessage <todo-id> "text"  # Add a message to an existing todo
   tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
-                                            #   [--title T] [--alias A] [--mime M] [--card <name>] [--json]
+                                            #   [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
+                                            #   --link = compact chip (name+size+download) instead of inline render
   tfa-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
                                             #   [--project <id>] [--card <name>] [--json]
                                             #   no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
@@ -129,6 +130,7 @@ export function parseCliArgs() {
       alias: { type: "string" },
       mime: { type: "string" },
       card: { type: "string" },
+      link: { type: "boolean", default: false },
       direction: { type: "string" },
       "business-context": { type: "string" },
       seed: { type: "string" },
