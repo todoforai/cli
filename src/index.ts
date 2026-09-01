@@ -860,15 +860,12 @@ async function main() {
 // Preserve any exit code set during the run (e.g. watchTodo on a non-success
 // terminal status); `process.exit(0)` would mask a failed run as success.
 // Under bun, process.exit() discards buffered pipe writes, truncating
-// `list --json | jq` at 64 KiB. Exit only once stdout's buffer is empty;
-// poll instead of waiting for a natural exit so a lingering handle (ws,
-// timer) can't delay or hang the CLI.
+// `list --json | jq` at 64 KiB. end(cb) is the only flush signal that's
+// honest on both bun 1.3 and 1.4 (writableLength/needDrain report 0 while
+// data is still buffered); finish() is terminal, so closing stdout is fine.
 const finish = (code: number) => {
   process.exitCode = code;
-  const poll = setInterval(() => {
-    if ((process.stdout as any).writableLength === 0) process.exit(code);
-  }, 5);
-  poll.unref?.();
+  process.stdout.end(() => process.exit(code));
 };
 main().then(() => finish(process.exitCode ?? 0)).catch((e) => {
   process.stderr.write(`Error: ${e.message}\n`);
