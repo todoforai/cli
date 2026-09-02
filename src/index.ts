@@ -359,6 +359,27 @@ async function main() {
     return;
   }
 
+  // show public|get|rm <site-id>: ops on the stored file behind a show (the
+  // site id is printed by `show`). No separate `site` command — show IS the tool.
+  if (positionals[0] === "show" && ["public", "get", "rm"].includes(positionals[1] ?? "")) {
+    const sub = positionals[1];
+    const id = positionals[2];
+    if (!id) { process.stderr.write(`${RED}Usage: tfa-cli show public <site-id> [--off] | get <site-id> [out] [--rev <att>] | rm <site-id>${RESET}\n`); process.exit(2); }
+    if (sub === "public") {
+      const site = await api.patchSite(id, { isPublic: !args.off });
+      console.log(site.url ?? `${site.id}  (private)`);
+    } else if (sub === "rm") {
+      await api.deleteSite(id);
+      process.stderr.write(`${GREEN}✅ deleted ${id}${RESET}\n`);
+    } else {
+      const bytes = await api.getSiteBytes(id, args.rev as string | undefined);
+      const out = positionals[3];
+      if (out && out !== "-") { await Bun.write(resolve(out), bytes); process.stderr.write(`${GREEN}✅ ${out}${RESET}\n`); }
+      else process.stdout.write(new Uint8Array(bytes));
+    }
+    return;
+  }
+
   if (positionals[0] === "show") {
     const [, filePath, todoArg] = positionals;
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
@@ -389,27 +410,6 @@ async function main() {
     });
     if (args.json) console.log(JSON.stringify(res, null, 2));
     else console.log(res.siteUrl ? `${res.ref}  site=${res.siteId}  ${res.siteUrl}` : `${res.ref}  site=${res.siteId}`);
-    return;
-  }
-
-  // show public|get|rm <site-id>: ops on the stored file behind a show (the
-  // site id is printed by `show`). No separate `site` command — show IS the tool.
-  if (positionals[0] === "show" && ["public", "get", "rm"].includes(positionals[1] ?? "")) {
-    const sub = positionals[1];
-    const id = positionals[2];
-    if (!id) { process.stderr.write(`${RED}Usage: tfa-cli show public <site-id> [--off] | get <site-id> [out] [--rev <att>] | rm <site-id>${RESET}\n`); process.exit(2); }
-    if (sub === "public") {
-      const site = await api.patchSite(id, { isPublic: !args.off });
-      console.log(site.url ?? `${site.id}  (private)`);
-    } else if (sub === "rm") {
-      await api.deleteSite(id);
-      process.stderr.write(`${GREEN}✅ deleted ${id}${RESET}\n`);
-    } else {
-      const bytes = await api.getSiteBytes(id, args.rev as string | undefined);
-      const out = positionals[3];
-      if (out && out !== "-") { await Bun.write(resolve(out), bytes); process.stderr.write(`${GREEN}✅ ${out}${RESET}\n`); }
-      else process.stdout.write(new Uint8Array(bytes));
-    }
     return;
   }
 
