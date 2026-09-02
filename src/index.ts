@@ -840,6 +840,15 @@ async function main() {
   const actualTodoId = todo.id || crypto.randomUUID();
   cfgScope.setLastTodoId(actualTodoId);
 
+  // Launched from an agent shell? Nest this run inside the bash block that
+  // spawned it, so the parent's UI shows its children (same mechanism as
+  // tfa-explore / tfa-review). Best-effort: failure only loses the nesting.
+  const { TODOFORAI_TODO_ID: pTodo, TODOFORAI_MESSAGE_ID: pMsg, TODOFORAI_BLOCK_ID: pBlock } = process.env;
+  if (pTodo && pMsg && pBlock && pTodo !== actualTodoId) {
+    await api.linkBlockSubTodo(pTodo, pMsg, pBlock, actualTodoId)
+      .catch((e: any) => process.stderr.write(`${DIM}subtodo link failed: ${e?.message ?? e}${RESET}\n`));
+  }
+
   const frontendUrl = getFrontendUrl(apiUrl, actualTodoId);
 
   if (args.json) {
