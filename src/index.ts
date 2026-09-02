@@ -359,24 +359,13 @@ async function main() {
     return;
   }
 
-  // show public|get|rm <site-id>: ops on the stored file behind a show (the
-  // site id is printed by `show`). No separate `site` command — show IS the tool.
-  if (positionals[0] === "show" && ["public", "get", "rm"].includes(positionals[1] ?? "")) {
-    const sub = positionals[1];
+  // show rm <site-id>: take a shown file down (all versions). The site id is
+  // printed by `show`; the bytes themselves are just `curl <url>`.
+  if (positionals[0] === "show" && positionals[1] === "rm") {
     const id = positionals[2];
-    if (!id) { process.stderr.write(`${RED}Usage: tfa-cli show public <site-id> [--off] | get <site-id> [out] [--rev <att>] | rm <site-id>${RESET}\n`); process.exit(2); }
-    if (sub === "public") {
-      const site = await api.patchSite(id, { isPublic: !args.off });
-      console.log(site.url ?? `${site.id}  (private)`);
-    } else if (sub === "rm") {
-      await api.deleteSite(id);
-      process.stderr.write(`${GREEN}✅ deleted ${id}${RESET}\n`);
-    } else {
-      const bytes = await api.getSiteBytes(id, args.rev as string | undefined);
-      const out = positionals[3];
-      if (out && out !== "-") { await Bun.write(resolve(out), bytes); process.stderr.write(`${GREEN}✅ ${out}${RESET}\n`); }
-      else process.stdout.write(new Uint8Array(bytes));
-    }
+    if (!id) { process.stderr.write(`${RED}Usage: tfa-cli show rm <site-id>${RESET}\n`); process.exit(2); }
+    await api.deleteSite(id);
+    process.stderr.write(`${GREEN}✅ deleted ${id}${RESET}\n`);
     return;
   }
 
@@ -385,7 +374,7 @@ async function main() {
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
     const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--site <id>] [--public]${RESET}\n`); process.exit(2); }
+    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--site <id>]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
     // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
@@ -406,10 +395,10 @@ async function main() {
     const res = await api.showFile(todoId, blob, name, {
       title: args.title, alias: args.alias, mime: args.mime, card: args.card as string | undefined,
       display: args.link ? "link" : undefined,
-      site: args.site as string | undefined, public: args.public ? true : undefined,
+      site: args.site as string | undefined,
     });
     if (args.json) console.log(JSON.stringify(res, null, 2));
-    else console.log(res.siteUrl ? `${res.ref}  site=${res.siteId}  ${res.siteUrl}` : `${res.ref}  site=${res.siteId}`);
+    else console.log(res.url ? `${res.ref}  site=${res.siteId}  ${res.url}` : res.ref);
     return;
   }
 

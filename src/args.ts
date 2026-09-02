@@ -35,12 +35,10 @@ Usage:
   tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
                                             #   [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
                                             #   --link = compact chip (name+size+download) instead of inline render
-                                            #   The bytes get a stable, versioned site id (printed). --site <id>
-                                            #   pushes a new version of an existing one (from any todo);
-                                            #   --public serves the latest at sites.todofor.ai/<id>
-  tfa-cli show public <site-id> [--off]       # Publish / unpublish a shown file
-  tfa-cli show get <site-id> [out] [--rev <att>]  # Fetch its bytes (latest, or a given version)
-  tfa-cli show rm <site-id>                   # Delete it and all its versions
+                                            #   The file gets a stable public url: sites.todofor.ai/<site-id>
+                                            #   (latest; /<site-id>/<attachment-id> = frozen version). --site <id>
+                                            #   pushes a new version to an existing url (from any todo).
+  tfa-cli show rm <site-id>           # Take a shown file down (all versions)
   tfa-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
                                             #   [--project <id>] [--card <name>] [--json]
                                             #   no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
@@ -138,9 +136,6 @@ export function parseCliArgs() {
       card: { type: "string" },
       link: { type: "boolean", default: false },
       site: { type: "string" },
-      public: { type: "boolean", default: false },
-      rev: { type: "string" },
-      off: { type: "boolean", default: false },
       direction: { type: "string" },
       "business-context": { type: "string" },
       seed: { type: "string" },
