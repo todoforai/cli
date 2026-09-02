@@ -34,12 +34,13 @@ Usage:
   tfa-cli addmessage <todo-id> "text"  # Add a message to an existing todo
   tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
                                             #   [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
-                                            #   [--site <id>] [--public] — the bytes live in a SITE (stable id,
-                                            #   versioned); --site pushes a new version of an existing one,
-                                            #   --public serves the latest at sites.todofor.ai/<id>
                                             #   --link = compact chip (name+size+download) instead of inline render
-  tfa-cli site push <file|-> [--site <id>] [--title T] [--mime M] [--public]  # Push a site version (no chat block)
-  tfa-cli site list | get <id> [out] [--rev <att>] | public <id> [--off] | rm <id>
+                                            #   The bytes get a stable, versioned site id (printed). --site <id>
+                                            #   pushes a new version of an existing one (from any todo);
+                                            #   --public serves the latest at sites.todofor.ai/<id>
+  tfa-cli show public <site-id> [--off]       # Publish / unpublish a shown file
+  tfa-cli show get <site-id> [out] [--rev <att>]  # Fetch its bytes (latest, or a given version)
+  tfa-cli show rm <site-id>                   # Delete it and all its versions
   tfa-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
                                             #   [--project <id>] [--card <name>] [--json]
                                             #   no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo

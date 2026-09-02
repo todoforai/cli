@@ -364,7 +364,7 @@ async function main() {
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
     const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link]${RESET}\n`); process.exit(2); }
+    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--site <id>] [--public]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
     // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
@@ -392,60 +392,25 @@ async function main() {
     return;
   }
 
-  if (positionals[0] === "site") {
+  // show public|get|rm <site-id>: ops on the stored file behind a show (the
+  // site id is printed by `show`). No separate `site` command — show IS the tool.
+  if (positionals[0] === "show" && ["public", "get", "rm"].includes(positionals[1] ?? "")) {
     const sub = positionals[1];
-    const usage = () => { process.stderr.write(`${RED}Usage: tfa-cli site push <file|-> [--site <id>] [--title T] [--mime M] [--public] | list | get <id> [out] [--rev <att>] | public <id> [--off] | rm <id>${RESET}\n`); process.exit(2); };
-    if (sub === "push") {
-      const filePath = positionals[2];
-      if (!filePath) usage();
-      let blob: Blob, name: string;
-      if (filePath === "-") {
-        blob = new Blob([await Bun.readableStreamToArrayBuffer(Bun.stdin.stream())]);
-        if (blob.size === 0) { process.stderr.write(`${RED}No data on stdin${RESET}\n`); process.exit(1); }
-        name = "stdin";
-      } else {
-        const file = Bun.file(resolve(filePath));
-        if (!(await file.exists())) { process.stderr.write(`${RED}File not found: ${filePath}${RESET}\n`); process.exit(1); }
-        blob = file; name = path.basename(filePath);
-      }
-      const site = await api.pushSite(blob, name, {
-        site: args.site as string | undefined, title: args.title, mime: args.mime, public: args.public ? true : undefined,
-      });
-      if (args.json) console.log(JSON.stringify(site, null, 2));
-      else console.log(site.url ? `${site.id}  ${site.url}` : `${site.id}  (private)`);
-      return;
-    }
-    if (sub === "list") {
-      const { items } = await api.listSites();
-      if (args.json) { console.log(JSON.stringify(items, null, 2)); return; }
-      if (items.length === 0) { process.stderr.write(`${DIM}No sites${RESET}\n`); return; }
-      for (const it of items) console.log(`${it.id}  ${it.title || ""}  ${it.mime}  v${it.versions.length}${it.isPublic ? `  ${it.url}` : ""}`);
-      return;
-    }
-    if (sub === "get") {
-      const id = positionals[2];
-      if (!id) usage();
+    const id = positionals[2];
+    if (!id) { process.stderr.write(`${RED}Usage: tfa-cli show public <site-id> [--off] | get <site-id> [out] [--rev <att>] | rm <site-id>${RESET}\n`); process.exit(2); }
+    if (sub === "public") {
+      const site = await api.patchSite(id, { isPublic: !args.off });
+      console.log(site.url ?? `${site.id}  (private)`);
+    } else if (sub === "rm") {
+      await api.deleteSite(id);
+      process.stderr.write(`${GREEN}✅ deleted ${id}${RESET}\n`);
+    } else {
       const bytes = await api.getSiteBytes(id, args.rev as string | undefined);
       const out = positionals[3];
       if (out && out !== "-") { await Bun.write(resolve(out), bytes); process.stderr.write(`${GREEN}✅ ${out}${RESET}\n`); }
       else process.stdout.write(new Uint8Array(bytes));
-      return;
     }
-    if (sub === "public") {
-      const id = positionals[2];
-      if (!id) usage();
-      const site = await api.patchSite(id, { isPublic: !args.off });
-      console.log(site.url ?? `${site.id}  (private)`);
-      return;
-    }
-    if (sub === "rm") {
-      const id = positionals[2];
-      if (!id) usage();
-      await api.deleteSite(id);
-      process.stderr.write(`${GREEN}✅ deleted ${id}${RESET}\n`);
-      return;
-    }
-    usage();
+    return;
   }
 
   if (positionals[0] === "open") {
