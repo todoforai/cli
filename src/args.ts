@@ -35,7 +35,7 @@ Usage:
   tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
                                             #   [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
                                             #   --link = compact chip (name+size+download) instead of inline render
-                                            #   The file gets a stable public url: sites.todofor.ai/<site-id>
+                                            #   The file gets a stable public url: show.todofor.ai/<site-id>
                                             #   (latest; /<site-id>/<attachment-id> = frozen version). --site <id>
                                             #   pushes a new version to an existing url (from any todo).
   tfa-cli show rm <site-id>           # Take a shown file down (all versions)
