@@ -118,6 +118,18 @@ async function interactiveLoop(
 
 // ── main ─────────────────────────────────────────────────────────────
 
+/** Launched from an agent shell? Nest this todo under the bash block that
+ *  spawned/poked it, so the parent's UI (chat trace + Agents panel) shows it —
+ *  same mechanism as tfa-explore / tfa-review. Applies to create, addmessage
+ *  and resume alike: driving an existing todo from here makes it this todo's
+ *  concern too. Best-effort: failure only loses the nesting. */
+async function linkToSpawningBlock(api: ApiClient, todoId: string) {
+  const { TODOFORAI_TODO_ID: pTodo, TODOFORAI_MESSAGE_ID: pMsg, TODOFORAI_BLOCK_ID: pBlock } = process.env;
+  if (!pTodo || !pMsg || !pBlock || pTodo === todoId) return;
+  await api.linkBlockSubTodo(pTodo, pMsg, pBlock, todoId)
+    .catch((e: any) => process.stderr.write(`${DIM}subtodo link failed: ${e?.message ?? e}${RESET}\n`));
+}
+
 async function main() {
   process.on("SIGINT", () => {
     process.stderr.write("\nCancelled by user (Ctrl+C)\n");
@@ -328,6 +340,7 @@ async function main() {
     // (the API asserts id+name+…), so fetch them when not inlined.
     const agent = todo.agentSettings || await api.getAgentSettings(todo.agentSettingsId);
     const msg = await api.addMessage(todo.projectId, content, agent, todoId);
+    await linkToSpawningBlock(api, todoId);
     if (args.json) console.log(JSON.stringify(msg, null, 2));
     else process.stderr.write(`${GREEN}✅ Message added to ${todoId}${RESET}\n`);
     return;
@@ -662,6 +675,7 @@ async function main() {
     if (followUp) {
       cfg.addToHistory(followUp);
       await api.addMessage(projectId, followUp, agent, todoId);
+      await linkToSpawningBlock(api, todoId);
       await watchTodo(ws, todoId, projectId, { json: !!args.json, autoApprove, agentSettings: agent });
     }
     if (!args["non-interactive"]) {
@@ -840,14 +854,7 @@ async function main() {
   const actualTodoId = todo.id || crypto.randomUUID();
   cfgScope.setLastTodoId(actualTodoId);
 
-  // Launched from an agent shell? Nest this run inside the bash block that
-  // spawned it, so the parent's UI shows its children (same mechanism as
-  // tfa-explore / tfa-review). Best-effort: failure only loses the nesting.
-  const { TODOFORAI_TODO_ID: pTodo, TODOFORAI_MESSAGE_ID: pMsg, TODOFORAI_BLOCK_ID: pBlock } = process.env;
-  if (pTodo && pMsg && pBlock && pTodo !== actualTodoId) {
-    await api.linkBlockSubTodo(pTodo, pMsg, pBlock, actualTodoId)
-      .catch((e: any) => process.stderr.write(`${DIM}subtodo link failed: ${e?.message ?? e}${RESET}\n`));
-  }
+  await linkToSpawningBlock(api, actualTodoId);
 
   const frontendUrl = getFrontendUrl(apiUrl, actualTodoId);
 
