@@ -690,6 +690,13 @@ async function main() {
     process.exit(2);
   }
 
+  // A lone word here is a mistyped subcommand, not a prompt (`tfa-cli models`
+  // once spawned an agent on the prompt "models"). Real prompts have spaces.
+  if (positionals.length === 1 && !/\s/.test(positionals[0])) {
+    process.stderr.write(`${RED}Error: "${positionals[0]}" is not a subcommand, and a prompt needs more than one word (or pipe it on stdin).${RESET}\n`);
+    process.exit(2);
+  }
+
   // ── start independent work early ──
   const ws = args["no-watch"] ? null : new FrontendWebSocket(apiUrl, apiKey);
   const wsReady = ws ? ws.connect() : null;
