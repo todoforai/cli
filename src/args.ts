@@ -62,7 +62,7 @@ Options:
   --api-key <key>                 API key
   --user-id <id>                  Admin HTTP impersonation; requires --no-watch
   --inspect, -i <todo-id>[@<slice>]     Print chat log (read-only)
-  --template, -t <id>            Start from a registry template (alias: start <id>)
+  --template, -t <id> ["prompt"] Start from a registry template (alias: start <id>); prompt overrides the template task
   --resume, -r [todo-id]          Resume existing todo
   --continue, -c                  Continue most recent todo
   --non-interactive, -n           Run to completion and exit without interactive prompt

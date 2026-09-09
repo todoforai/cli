@@ -595,7 +595,12 @@ async function main() {
     }
     if (!projectId) { process.stderr.write("Error: No project found\n"); process.exit(1); }
 
+    // Trailing prompt overrides the spec's default user message (spec name+description);
+    // `start <id>` consumed positionals[1], so skip it there.
+    const promptWords = positionals[0] === "start" ? positionals.slice(2) : positionals;
+    const content = promptWords.join(" ").trim();
     const todo = await api.startFromSpec(projectId, templateId, {
+      ...(content ? { content } : {}),
       ...(groupTag ? { groupTag } : {}),
       ...(groupName ? { groupName } : {}),
     });
