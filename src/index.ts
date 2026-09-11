@@ -37,6 +37,7 @@ import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
+import { runAcp } from "./acp";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -314,6 +315,12 @@ async function main() {
   if (args["user-id"] && args.template && !args["no-watch"]) {
     process.stderr.write("Error: --user-id uses admin HTTP impersonation and requires --no-watch\n");
     process.exit(2);
+  }
+
+  // ── ACP agent mode: JSON-RPC over stdio for IDE hosts (Zed, JetBrains, …) ──
+  if (positionals[0] === "acp") {
+    await runAcp(apiUrl, apiKey, { projectId: (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id, noBridge: !!args["no-bridge"] });
+    return;
   }
 
   // ── todo management subcommands (read-only on the bridge; no bridge spawn) ──

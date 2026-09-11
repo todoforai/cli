@@ -11,7 +11,7 @@ const diffStoreByWs = new WeakMap<FrontendWebSocket, Map<string, DiffEntry>>();
 
 // ── block classification ─────────────────────────────────────────────
 
-function classifyBlock(info: any): string {
+export function classifyBlock(info: any): string {
   const inner = (info.block_type || "").toLowerCase();
   if (["create", "createfile", "write"].includes(inner)) return "create";
   if (["modify", "modifyfile", "update", "edit"].includes(inner)) return "edit";
@@ -42,19 +42,6 @@ function blockDisplay(info: any): [string, string] {
   if (!display) display = "<pending>";
   if (display.length > 200) display = display.slice(0, 200) + "...";
   return [typeLabel, display];
-}
-
-// ── approval helpers ─────────────────────────────────────────────────
-
-function sendApproval(ws: FrontendWebSocket, blockId: string, messageId: string, todoId: string, decision: string = "allow_once", patterns?: string[]): void {
-  const payload: any = { todoId, messageId, blockId, decision };
-  if (patterns && patterns.length > 0) {
-    payload.patterns = patterns;
-  }
-  (ws as any).ws?.send(JSON.stringify({
-    type: "BLOCK_APPROVAL_INTENT",
-    payload,
-  }));
 }
 
 // ── main watch function ──────────────────────────────────────────────
@@ -132,7 +119,7 @@ export async function watchTodo(
       for (const bi of blocks) {
         const [tl, disp] = blockDisplay(bi);
         process.stderr.write(`\n${YELLOW}⚠ Auto-approving [${tl}]${RESET} ${disp}\n`);
-        sendApproval(ws, bi.blockId, bi.messageId, todoId);
+        ws.sendBlockApproval(todoId, bi.messageId, bi.blockId);
       }
       approvalPromptActive = false;
       if (pendingBlocks.length > 0) {
@@ -193,7 +180,7 @@ export async function watchTodo(
               process.stderr.write(`  ${GREEN}✓ Remembering: ${patterns.map(stripPrefix).join(", ")}${RESET}\n`);
             }
           }
-          sendApproval(ws, bi.blockId, bi.messageId, todoId, decision, patterns);
+          ws.sendBlockApproval(todoId, bi.messageId, bi.blockId, decision, patterns);
         }
       } else {
         for (const bi of blocks) {
@@ -204,7 +191,7 @@ export async function watchTodo(
     } catch {
       // Interrupted — auto-approve
       for (const bi of blocks) {
-        sendApproval(ws, bi.blockId, bi.messageId, todoId);
+        ws.sendBlockApproval(todoId, bi.messageId, bi.blockId);
       }
     }
     activeApprovalBlocks = [];

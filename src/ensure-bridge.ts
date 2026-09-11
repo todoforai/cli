@@ -77,9 +77,14 @@ export function bridgeDeviceId(apiUrl: string): string | null {
   return m ? m[1] : null;
 }
 
-export function ensureBridgeCredentials(apiUrl: string): boolean {
+export function ensureBridgeCredentials(apiUrl: string, opts: { interactive?: boolean } = {}): boolean {
   const whoami = spawnSync("todoforai-bridge", bridgeWhoamiArgs(apiUrl), { stdio: "ignore" });
   if (whoami.status === 0) return true;
+  // stdio is a protocol channel for some callers (ACP) — never run the interactive login there.
+  if (opts.interactive === false) {
+    console.error("Bridge credentials not found. Run `todoforai-bridge login` first.");
+    return false;
+  }
 
   // Do not hide the bridge's first-run device-login URL in bridge.log. Run the
   // login subcommand in the foreground once, then spawn the daemon detached.
@@ -112,13 +117,13 @@ async function waitForBridgeOnline(apiUrl: string, apiKey: string, deviceId: str
   return false;
 }
 
-export async function ensureBridgeRunning(apiUrl: string, apiKey: string): Promise<boolean> {
+export async function ensureBridgeRunning(apiUrl: string, apiKey: string, opts: { interactive?: boolean } = {}): Promise<boolean> {
   if (!hasBridge()) {
     console.error("\x1b[2mBridge not started: `todoforai-bridge` was not found on PATH. Install TODOforAI Bridge, or pass --no-bridge (or deprecated --no-edge) to silence this.\x1b[0m");
     return false;
   }
 
-  if (!ensureBridgeCredentials(apiUrl)) {
+  if (!ensureBridgeCredentials(apiUrl, opts)) {
     console.error("\x1b[33mBridge not started: `todoforai-bridge login` did not complete successfully.\x1b[0m");
     return false;
   }
