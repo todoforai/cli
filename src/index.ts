@@ -321,7 +321,7 @@ async function main() {
   // ── ACP agent mode: JSON-RPC over stdio for IDE hosts (Zed, JetBrains, …) ──
   if (positionals[0] === "acp") {
     for (const f of ["isolated", "user-id"] as const) if (args[f]) { process.stderr.write(`Error: --${f} is not supported with acp\n`); process.exit(2); }
-    await runAcp(apiUrl, apiKey, { projectId: (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id, noBridge: !!args["no-bridge"] });
+    await runAcp(apiUrl, apiKey, { projectId: (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id, agent: args.agent as string | undefined, noBridge: !!args["no-bridge"] });
     return;
   }
 

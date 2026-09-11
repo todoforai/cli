@@ -15,7 +15,7 @@ import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
 import { NEVER_SCHEDULED_TIMESTAMP } from "@shared/fbe";
 import { autoCreateAgent } from "./agent";
 import { ensureBridgeRunning } from "./ensure-bridge";
-import { getItemId } from "./select";
+import { getItemId, resolveAgentMatch } from "./select";
 import { classifyBlock } from "./watch";
 
 const log = (...a: any[]) => process.stderr.write(`[acp] ${a.join(" ")}\n`);
@@ -53,7 +53,7 @@ class BlockView {
 class TodoforaiAgent implements acp.Agent {
   private sessions = new Map<string, Session>();
 
-  constructor(private conn: acp.AgentSideConnection, private api: ApiClient, private ws: FrontendWebSocket, private projectId: string | undefined) {}
+  constructor(private conn: acp.AgentSideConnection, private api: ApiClient, private ws: FrontendWebSocket, private projectId: string | undefined, private agentQuery: string | undefined) {}
 
   async initialize(): Promise<acp.InitializeResponse> {
     return { protocolVersion: acp.PROTOCOL_VERSION, agentCapabilities: { promptCapabilities: { embeddedContext: true } }, authMethods: [] };
@@ -70,10 +70,20 @@ class TodoforaiAgent implements acp.Agent {
     return (this.projectId = id);
   }
 
+  /** --agent wins; else the agent owning this workspace; else create one for it. */
+  private async resolveAgent(cwd: string) {
+    if (this.agentQuery) {
+      const { match, ambiguous } = resolveAgentMatch(await this.api.listAgentSettings(), this.agentQuery);
+      if (!match) throw acp.RequestError.invalidParams(`agent '${this.agentQuery}' ${ambiguous?.length ? "is ambiguous" : "not found"}`);
+      return match;
+    }
+    return (await this.api.listAgentSettings({ workspacePath: cwd }))[0] ?? (await autoCreateAgent(this.api, cwd));
+  }
+
   async newSession(p: acp.NewSessionRequest): Promise<acp.NewSessionResponse> {
     const projectId = await this.resolveProject();
     const cwd = realpathSync(p.cwd);
-    const agent = (await this.api.listAgentSettings({ workspacePath: cwd }))[0] ?? (await autoCreateAgent(this.api, cwd));
+    const agent = await this.resolveAgent(cwd);
     const todoId = crypto.randomUUID();
     this.sessions.set(todoId, { todoId, projectId, agent });
     log(`session ${todoId} agent=${agent.name} cwd=${cwd}`);
@@ -169,17 +179,19 @@ class TodoforaiAgent implements acp.Agent {
       if (st === "AWAITING_APPROVAL") void askPermission(id, b, payload.messageId);
     };
 
-    // Post the message as manual-start (PAUSED), subscribe the socket, THEN
-    // start it — so no event is emitted before we listen, and a cancel that
-    // lands before start simply never starts the run.
+    // Post the message as manual-start (PAUSED), subscribe (server-acked), THEN
+    // start it — so no event is emitted before we listen. A cancel that lands
+    // before start never starts the run; one that lands during start interrupts.
     try {
       const msg = await this.api.addMessage(s.projectId, text, s.agent, s.todoId, undefined, NEVER_SCHEDULED_TIMESTAMP);
-      const done = this.ws.waitForCompletion(s.todoId, onEvent);
+      if (!(await this.ws.subscribe(s.todoId, onEvent))) throw new Error("subscribe failed");
+      const done = this.ws.completion(s.todoId);
       if (turn.cancelled) return { stopReason: "cancelled" };
       await this.api.updateAndStart(s.todoId, s.agent, msg.messages?.at(-1)?.id);
       turn.started = true;
+      if (turn.cancelled) await this.ws.sendInterrupt(s.projectId, s.todoId);
       const result = await done;
-      if (turn.cancelled) return { stopReason: "cancelled" };
+      if (turn.cancelled || /^CANCELLED/.test(result?.payload?.status)) return { stopReason: "cancelled" };
       if (!result?.success) throw acp.RequestError.internalError(`todo ended with status ${result?.payload?.status ?? "unknown"}`);
       return { stopReason: "end_turn" };
     } catch (e: any) {
@@ -187,12 +199,12 @@ class TodoforaiAgent implements acp.Agent {
       throw acp.RequestError.internalError(String(e?.message || e));
     } finally {
       turn.done = true;
-      this.ws.setCallback(s.todoId);
+      this.ws.forget(s.todoId);
     }
   }
 }
 
-export async function runAcp(apiUrl: string, apiKey: string, opts: { projectId?: string; noBridge?: boolean }) {
+export async function runAcp(apiUrl: string, apiKey: string, opts: { projectId?: string; agent?: string; noBridge?: boolean }) {
   // Shared libs log via console.log; anything on stdout would corrupt the RPC stream.
   console.log = (...a: any[]) => process.stderr.write(a.map(String).join(" ") + "\n");
 
@@ -202,7 +214,7 @@ export async function runAcp(apiUrl: string, apiKey: string, opts: { projectId?:
   if (!wsOk) throw new Error("frontend websocket connect failed");
 
   const stream = acp.ndJsonStream(Writable.toWeb(process.stdout) as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>);
-  new acp.AgentSideConnection(conn => new TodoforaiAgent(conn, api, ws, opts.projectId), stream);
+  new acp.AgentSideConnection(conn => new TodoforaiAgent(conn, api, ws, opts.projectId, opts.agent), stream);
   log(`ready (${apiUrl})`);
   await new Promise<void>(resolve => { process.stdin.once("end", resolve); process.stdin.once("close", resolve); process.stdin.once("error", resolve); });
   await ws.close();

@@ -97,7 +97,7 @@ Pick **TODOforAI** from the agent dropdown in AI Chat.
 
 **VS Code** — no built-in ACP client yet; install a community ACP client extension (e.g. [`strato-space.acp-plugin`](https://marketplace.visualstudio.com/items?itemName=strato-space.acp-plugin)) and add the same `agent_servers` entry to `settings.json`.
 
-Options like `--agent`, `--project`, `--path`, `--api-url` apply to `acp` as well (e.g. `"args": ["acp", "--agent", "backend"]`). If `todoforai-cli` is not on the editor's `PATH`, use its absolute path (`which todoforai-cli`).
+`--agent`, `--project` and `--api-url` apply to `acp` as well (e.g. `"args": ["acp", "--agent", "backend"]`). If `todoforai-cli` is not on the editor's `PATH`, use its absolute path (`which todoforai-cli`).
 
 ## All Options
 
