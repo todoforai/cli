@@ -25,6 +25,7 @@ Usage:
   tfa-cli --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
   tfa-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
   tfa-cli start <id>                    # Start a TODO from the registry (todoregistry.com)
+  tfa-cli acp                           # Agent Client Protocol server on stdio (Zed, JetBrains, …; see README)
   tfa-cli --list-agents                 # List available agents and exit
   tfa-cli --list-models [filter]        # List models usable with --model and exit
   tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help')

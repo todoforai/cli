@@ -67,6 +67,38 @@ todoforai-cli -c                     # continue most recent todo
 todoforai-cli --resume <todo-id>     # resume specific todo
 ```
 
+## IDE integration (ACP)
+
+`todoforai-cli acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com) over stdio, so any ACP-capable editor can drive your agent: prompts from the editor chat, file edits as native diffs, permission prompts inline, and shell commands running on your machine through the bridge. One ACP thread = one todo. Requires `todoforai-cli login` first; `--isolated` / `--user-id` are not supported in this mode.
+
+**Zed** — `~/.config/zed/settings.json`:
+
+```json
+{
+  "agent_servers": {
+    "TODOforAI": { "type": "custom", "command": "todoforai-cli", "args": ["acp"] }
+  }
+}
+```
+
+Then open the Agent panel → `+` → **TODOforAI**.
+
+**JetBrains (IntelliJ, PyCharm, WebStorm… 2025.2+)** — AI Chat → `⋮` → **Add Custom Agent**, which opens `~/.jetbrains/acp.json`:
+
+```json
+{
+  "agent_servers": {
+    "TODOforAI": { "command": "todoforai-cli", "args": ["acp"] }
+  }
+}
+```
+
+Pick **TODOforAI** from the agent dropdown in AI Chat.
+
+**VS Code** — no built-in ACP client yet; install a community ACP client extension (e.g. [`strato-space.acp-plugin`](https://marketplace.visualstudio.com/items?itemName=strato-space.acp-plugin)) and add the same `agent_servers` entry to `settings.json`.
+
+Options like `--agent`, `--project`, `--path`, `--api-url` apply to `acp` as well (e.g. `"args": ["acp", "--agent", "backend"]`). If `todoforai-cli` is not on the editor's `PATH`, use its absolute path (`which todoforai-cli`).
+
 ## All Options
 
 ```

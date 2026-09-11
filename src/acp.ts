@@ -12,6 +12,7 @@ import { Readable, Writable } from "stream";
 import * as acp from "@zed-industries/agent-client-protocol";
 import { ApiClient, FrontendWebSocket } from "@shared/api";
 import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
+import { NEVER_SCHEDULED_TIMESTAMP } from "@shared/fbe";
 import { autoCreateAgent } from "./agent";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { getItemId } from "./select";
@@ -22,7 +23,7 @@ const log = (...a: any[]) => process.stderr.write(`[acp] ${a.join(" ")}\n`);
 type SessionUpdate = acp.SessionNotification["update"];
 type ToolContent = Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }>["content"];
 type Session = { todoId: string; projectId: string; agent: any; turn?: Turn };
-type Turn = { cancelled: boolean; done: boolean };
+type Turn = { cancelled: boolean; started: boolean; done: boolean };
 
 const ACP_KIND: Record<string, acp.ToolKind> = { create: "edit", edit: "edit", read: "read", search: "search", shell: "execute" };
 
@@ -83,14 +84,14 @@ class TodoforaiAgent implements acp.Agent {
     const s = this.sessions.get(p.sessionId);
     if (!s?.turn || s.turn.done) return;
     s.turn.cancelled = true;
-    if (!(await this.ws.sendInterrupt(s.projectId, s.todoId))) log("interrupt not delivered (socket down)");
+    if (s.turn.started && !(await this.ws.sendInterrupt(s.projectId, s.todoId))) log("interrupt not delivered (socket down)");
   }
 
   async prompt(p: acp.PromptRequest): Promise<acp.PromptResponse> {
     const s = this.sessions.get(p.sessionId);
     if (!s) throw acp.RequestError.invalidParams(`unknown session ${p.sessionId}`);
     if (s.turn && !s.turn.done) throw acp.RequestError.invalidRequest("a prompt is already running in this session");
-    const turn: Turn = (s.turn = { cancelled: false, done: false });
+    const turn: Turn = (s.turn = { cancelled: false, started: false, done: false });
 
     const text = p.prompt.map(b =>
       b.type === "text" ? b.text
@@ -111,7 +112,7 @@ class TodoforaiAgent implements acp.Agent {
     };
 
     const askPermission = async (id: string, b: BlockView, messageId: string) => {
-      if (b.permissionAsked) return;
+      if (b.permissionAsked || turn.done) return;
       b.permissionAsked = true;
       const patterns = getBlockNewPatterns({ type: b.info.block_type || "unknown", generalized_pattern: b.info.generalized_pattern, cmd: b.info.cmd }, s.agent?.permissions);
       const options: acp.PermissionOption[] = [
@@ -168,12 +169,16 @@ class TodoforaiAgent implements acp.Agent {
       if (st === "AWAITING_APPROVAL") void askPermission(id, b, payload.messageId);
     };
 
-    // Register the callback BEFORE the message is posted so nothing emitted
-    // during addMessage is lost; waitForCompletion re-registers the same one.
-    this.ws.setCallback(s.todoId, onEvent);
+    // Post the message as manual-start (PAUSED), subscribe the socket, THEN
+    // start it — so no event is emitted before we listen, and a cancel that
+    // lands before start simply never starts the run.
     try {
-      await this.api.addMessage(s.projectId, text, s.agent, s.todoId);
-      const result = await this.ws.waitForCompletion(s.todoId, onEvent);
+      const msg = await this.api.addMessage(s.projectId, text, s.agent, s.todoId, undefined, NEVER_SCHEDULED_TIMESTAMP);
+      const done = this.ws.waitForCompletion(s.todoId, onEvent);
+      if (turn.cancelled) return { stopReason: "cancelled" };
+      await this.api.updateAndStart(s.todoId, s.agent, msg.messages?.at(-1)?.id);
+      turn.started = true;
+      const result = await done;
       if (turn.cancelled) return { stopReason: "cancelled" };
       if (!result?.success) throw acp.RequestError.internalError(`todo ended with status ${result?.payload?.status ?? "unknown"}`);
       return { stopReason: "end_turn" };
@@ -182,6 +187,7 @@ class TodoforaiAgent implements acp.Agent {
       throw acp.RequestError.internalError(String(e?.message || e));
     } finally {
       turn.done = true;
+      this.ws.setCallback(s.todoId);
     }
   }
 }
