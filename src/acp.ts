@@ -184,6 +184,11 @@ class TodoforaiAgent implements acp.Agent {
     // before start never starts the run; one that lands during start interrupts.
     try {
       const msg = await this.api.addMessage(s.projectId, text, s.agent, s.todoId, undefined, NEVER_SCHEDULED_TIMESTAMP);
+      // The previous turn's trailing terminal status (DONE lands ~1s after READY)
+      // arrives after that turn's forget() and is cached as a stale "early" result;
+      // completion() would consume it and end this turn before any output. The
+      // todo is PAUSED from here on, so nothing terminal can be emitted until start.
+      this.ws.forget(s.todoId);
       if (!(await this.ws.subscribe(s.todoId, onEvent))) throw new Error("subscribe failed");
       const done = this.ws.completion(s.todoId);
       if (turn.cancelled) return { stopReason: "cancelled" };
