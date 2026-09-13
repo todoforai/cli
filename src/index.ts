@@ -25,7 +25,8 @@ import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCli
 import { readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
-import { readCredential, writeCredential } from "./credentials";
+import { readCredential } from "./credentials";
+import { runDeviceLogin, DeviceLoginError } from "./device-login";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
 import { getFrontendUrl } from "./urls";
@@ -216,53 +217,11 @@ async function main() {
   }
 
   // ── device login ──
-  async function deviceLogin(): Promise<string> {
-    const loginApi = new ApiClient(apiUrl, ""); // no key needed for init
-    // clientName "edge" → backend mints a durable apiKey (handled below); "cli"/"bridge"
-    // route to the device-credential branch that returns device/apiToken (no apiKey).
-    const { code, url, expiresIn } = await loginApi.initDeviceLogin("edge");
-
-    const userCode = new URL(url).searchParams.get("user_code") || code.slice(-8).toUpperCase();
-    const formattedCode = userCode.length === 8 ? `${userCode.slice(0, 4)}-${userCode.slice(4)}` : userCode;
-    process.stderr.write(`\n🔑 Open this URL to authorize:\n`);
-    process.stderr.write(`${CYAN}${url}${RESET}\n`);
-    process.stderr.write(`Verification code: ${BRIGHT_WHITE}${formattedCode}${RESET}\n\n`);
-
-    // Best-effort open browser
-    try {
-      const { spawn } = await import("child_process");
-      if (process.platform === "win32") {
-        spawn("cmd", ["/c", "start", "", url], { stdio: "ignore", detached: true }).unref();
-      } else {
-        const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-        spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
-      }
-    } catch {}
-
-    process.stderr.write(`Waiting for approval (expires in ${Math.round(expiresIn / 60)}min)...\n`);
-    const deadline = Date.now() + expiresIn * 1000;
-    let failures = 0;
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 3000));
-      try {
-        const poll = await loginApi.pollDeviceLogin(code);
-        failures = 0;
-        if (poll.status === "complete" && poll.apiKey) {
-          writeCredential(apiUrl, poll.apiKey);
-          process.stderr.write(`${GREEN}✅ Login successful! API key saved.${RESET}\n`);
-          return poll.apiKey;
-        }
-        if (poll.status === "expired") break;
-      } catch (e: any) {
-        if (++failures >= 5) {
-          process.stderr.write(`${RED}Poll failed: ${e.message}${RESET}\n`);
-          process.exit(1);
-        }
-      }
-    }
-    process.stderr.write(`${RED}Login expired or failed.${RESET}\n`);
+  const deviceLogin = () => runDeviceLogin(apiUrl).catch((e) => {
+    if (!(e instanceof DeviceLoginError)) throw e;
+    process.stderr.write(`${RED}${e.message}${RESET}\n`);
     process.exit(1);
-  }
+  });
 
   if (positionals[0] === "login" && positionals.length === 1) {
     await deviceLogin();
@@ -283,10 +242,9 @@ async function main() {
     || getEnv("API_TOKEN")
     || "";
 
-  if (!apiKey) {
-    if (positionals[0] === "acp") { process.stderr.write("Error: not logged in — run `todoforai-cli login` first\n"); process.exit(1); }
-    apiKey = await deviceLogin();
-  }
+  // acp: no key is not an error — the host gets an AUTH_REQUIRED and drives the
+  // device login through `authenticate` (registry auth-check expects this).
+  if (!apiKey && positionals[0] !== "acp") apiKey = await deviceLogin();
 
   // --debug-dump: forward TODOFORAI_DEBUG_SECRET as x-tfa-debug; the server
   // decides whether to grant per-turn request capture.

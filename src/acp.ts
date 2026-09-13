@@ -17,6 +17,7 @@ import { autoCreateAgent } from "./agent";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { getItemId, resolveAgentMatch } from "./select";
 import { classifyBlock } from "./watch";
+import { runDeviceLogin } from "./device-login";
 
 const log = (...a: any[]) => process.stderr.write(`[acp] ${a.join(" ")}\n`);
 
@@ -50,31 +51,76 @@ class BlockView {
   }
 }
 
+/** Device login as an ACP "agent" auth method: the CLI opens the browser and
+ *  polls for approval itself, then connects the backend socket + bridge. */
+/** No `type` = "agent" auth per the ACP registry docs: the agent runs the flow itself. */
+const AUTH_METHOD: acp.AuthMethod = { id: "device-login", name: "Log in with TODOforAI", description: "Opens your browser to authorize this machine" };
+
 class TodoforaiAgent implements acp.Agent {
   private sessions = new Map<string, Session>();
+  private api!: ApiClient;
+  private ws!: FrontendWebSocket; // set by connect(); every RPC that uses it goes through requireAuth()
+  // Memoized so concurrent authenticate / session/new calls share one login
+  // and one socket; reset on failure so the host can retry.
+  private loggingIn?: Promise<void>;
+  private connecting?: Promise<void>;
 
-  constructor(private conn: acp.AgentSideConnection, private api: ApiClient, private ws: FrontendWebSocket, private projectId: string | undefined, private agentQuery: string | undefined) {}
+  constructor(private conn: acp.AgentSideConnection, private apiUrl: string, private apiKey: string, private opts: { projectId?: string; agent?: string; noBridge?: boolean }) {}
 
   async initialize(): Promise<acp.InitializeResponse> {
-    return { protocolVersion: acp.PROTOCOL_VERSION, agentCapabilities: { promptCapabilities: { embeddedContext: true } }, authMethods: [] };
+    return { protocolVersion: acp.PROTOCOL_VERSION, agentCapabilities: { promptCapabilities: { embeddedContext: true } }, authMethods: [AUTH_METHOD] };
   }
 
-  async authenticate(): Promise<void> {}
+  async authenticate(p: acp.AuthenticateRequest): Promise<acp.AuthenticateResponse> {
+    if (p.methodId !== AUTH_METHOD.id) throw acp.RequestError.invalidParams(`unknown auth method ${p.methodId}`);
+    if (!this.apiKey) {
+      await (this.loggingIn ??= runDeviceLogin(this.apiUrl)
+        .then(key => { this.apiKey = key; })
+        .finally(() => { this.loggingIn = undefined; }));
+    }
+    await this.connect();
+    return {};
+  }
+
+  /** Backend socket + local bridge; once per process, after a key exists. */
+  connect(): Promise<void> {
+    return (this.connecting ??= (async () => {
+      const ws = new FrontendWebSocket(this.apiUrl, this.apiKey);
+      try {
+        const [wsOk] = await Promise.all([ws.connect(), this.opts.noBridge || ensureBridgeRunning(this.apiUrl, this.apiKey, { interactive: false })]);
+        if (!wsOk) throw acp.RequestError.internalError("frontend websocket connect failed");
+      } catch (e) {
+        this.connecting = undefined;
+        await ws.close().catch(() => {});
+        throw e;
+      }
+      this.api = new ApiClient(this.apiUrl, this.apiKey);
+      this.ws = ws;
+      log(`ready (${this.apiUrl})`);
+    })());
+  }
+
+  private async requireAuth() {
+    if (!this.apiKey) throw acp.RequestError.authRequired();
+    await this.connect();
+  }
+
+  async close() { await (this.ws as FrontendWebSocket | undefined)?.close(); }
 
   /** Same rule as the non-interactive paths in index.ts: explicit > server default > first. */
   private async resolveProject(): Promise<string> {
-    if (this.projectId) return this.projectId;
+    if (this.opts.projectId) return this.opts.projectId;
     const projects = await this.api.listProjects();
     const id = projects.find((p: any) => p.project?.isDefault)?.project?.id || (projects[0] && getItemId(projects[0]));
     if (!id) throw acp.RequestError.internalError("no project on this account");
-    return (this.projectId = id);
+    return (this.opts.projectId = id);
   }
 
   /** --agent wins; else the agent owning this workspace; else create one for it. */
   private async resolveAgent(cwd: string) {
-    if (this.agentQuery) {
-      const { match, ambiguous } = resolveAgentMatch(await this.api.listAgentSettings(), this.agentQuery);
-      if (!match) throw acp.RequestError.invalidParams(`agent '${this.agentQuery}' ${ambiguous?.length ? "is ambiguous" : "not found"}`);
+    if (this.opts.agent) {
+      const { match, ambiguous } = resolveAgentMatch(await this.api.listAgentSettings(), this.opts.agent);
+      if (!match) throw acp.RequestError.invalidParams(`agent '${this.opts.agent}' ${ambiguous?.length ? "is ambiguous" : "not found"}`);
       return match;
     }
     return (await this.api.listAgentSettings({ workspacePath: cwd }))[0] ?? (await autoCreateAgent(this.api, cwd));
@@ -93,6 +139,7 @@ class TodoforaiAgent implements acp.Agent {
   }
 
   async newSession(p: acp.NewSessionRequest): Promise<acp.NewSessionResponse> {
+    await this.requireAuth();
     const projectId = await this.resolveProject();
     const cwd = realpathSync(p.cwd);
     const agent = await this.resolveAgent(cwd);
@@ -236,14 +283,16 @@ export async function runAcp(apiUrl: string, apiKey: string, opts: { projectId?:
   // Shared libs log via console.log; anything on stdout would corrupt the RPC stream.
   console.log = (...a: any[]) => process.stderr.write(a.map(String).join(" ") + "\n");
 
-  const api = new ApiClient(apiUrl, apiKey);
-  const ws = new FrontendWebSocket(apiUrl, apiKey);
-  const [wsOk] = await Promise.all([ws.connect(), opts.noBridge || ensureBridgeRunning(apiUrl, apiKey, { interactive: false })]);
-  if (!wsOk) throw new Error("frontend websocket connect failed");
-
+  // Listen for host EOF before anything async, so a host that goes away during
+  // the eager connect below still ends this process.
+  const eof = new Promise<void>(resolve => { process.stdin.once("end", resolve); process.stdin.once("close", resolve); process.stdin.once("error", resolve); });
   const stream = acp.ndJsonStream(Writable.toWeb(process.stdout) as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>);
-  new acp.AgentSideConnection(conn => new TodoforaiAgent(conn, api, ws, opts.projectId, opts.agent), stream);
-  log(`ready (${apiUrl})`);
-  await new Promise<void>(resolve => { process.stdin.once("end", resolve); process.stdin.once("close", resolve); process.stdin.once("error", resolve); });
-  await ws.close();
+  let agent!: TodoforaiAgent;
+  new acp.AgentSideConnection(conn => (agent = new TodoforaiAgent(conn, apiUrl, apiKey, opts)), stream);
+  // Connect eagerly when already logged in so the first session/new is instant;
+  // otherwise wait for the host to call authenticate.
+  if (apiKey) agent.connect().catch(e => log("connect failed:", e?.message));
+  else log("not logged in — waiting for authenticate");
+  await eof;
+  await agent.close();
 }
