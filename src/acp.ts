@@ -80,6 +80,18 @@ class TodoforaiAgent implements acp.Agent {
     return (await this.api.listAgentSettings({ workspacePath: cwd }))[0] ?? (await autoCreateAgent(this.api, cwd));
   }
 
+  /** Agent settings are exposed as ACP session modes: the host renders them as
+   *  a picker next to the chat input, so the user can switch without editing
+   *  the `--agent` arg. */
+  private async modes(current: any): Promise<acp.SessionModeState> {
+    const agents: any[] = await this.api.listAgentSettings();
+    if (!agents.some(a => a.id === current.id)) agents.unshift(current);
+    return {
+      currentModeId: current.id,
+      availableModes: agents.map(a => ({ id: a.id, name: a.name || a.id, description: a.model || null })),
+    };
+  }
+
   async newSession(p: acp.NewSessionRequest): Promise<acp.NewSessionResponse> {
     const projectId = await this.resolveProject();
     const cwd = realpathSync(p.cwd);
@@ -87,7 +99,18 @@ class TodoforaiAgent implements acp.Agent {
     const todoId = crypto.randomUUID();
     this.sessions.set(todoId, { todoId, projectId, agent });
     log(`session ${todoId} agent=${agent.name} cwd=${cwd}`);
-    return { sessionId: todoId };
+    return { sessionId: todoId, modes: await this.modes(agent) };
+  }
+
+  async setSessionMode(p: acp.SetSessionModeRequest): Promise<acp.SetSessionModeResponse> {
+    const s = this.sessions.get(p.sessionId);
+    if (!s) throw acp.RequestError.invalidParams(`unknown session ${p.sessionId}`);
+    const agent = (await this.api.listAgentSettings()).find((a: any) => a.id === p.modeId);
+    if (!agent) throw acp.RequestError.invalidParams(`unknown agent ${p.modeId}`);
+    s.agent = agent; // applies from the next prompt; a running turn keeps its agent
+    log(`session ${s.todoId} agent=${agent.name}`);
+    void this.conn.sessionUpdate({ sessionId: p.sessionId, update: { sessionUpdate: "current_mode_update", currentModeId: agent.id } });
+    return {};
   }
 
   async cancel(p: acp.CancelNotification): Promise<void> {
