@@ -4,8 +4,11 @@ CLI for [TODOforAI](https://todofor.ai) — create, watch, and inspect AI-powere
 
 ## Install
 
+Runs on Node ≥ 20 or Bun.
+
 ```bash
-bun install -g @todoforai/cli
+npm install -g @todoforai/cli      # or: bun install -g @todoforai/cli
+npx @todoforai/cli "Fix the login bug"   # no install
 # Install the native bridge once, if it is not already on PATH:
 curl -fsSL https://raw.githubusercontent.com/todoforai/bridge/main/install.sh | sh
 ```
@@ -97,7 +100,7 @@ Pick **TODOforAI** from the agent dropdown in AI Chat.
 
 **VS Code** — no built-in ACP client yet; install a community ACP client extension (e.g. [`strato-space.acp-plugin`](https://marketplace.visualstudio.com/items?itemName=strato-space.acp-plugin)) and add the same `agent_servers` entry to `settings.json`.
 
-`--agent`, `--project` and `--api-url` apply to `acp` as well (e.g. `"args": ["acp", "--agent", "backend"]`). If `todoforai-cli` is not on the editor's `PATH`, use its absolute path (`which todoforai-cli`).
+No global install needed — `"command": "npx", "args": ["-y", "@todoforai/cli", "acp"]` works in every host above. `--agent`, `--project` and `--api-url` apply to `acp` as well (e.g. `"args": ["acp", "--agent", "backend"]`). If `todoforai-cli` is not on the editor's `PATH`, use its absolute path (`which todoforai-cli`). Your agent settings show up in the host's mode picker, so you can switch agents per session without touching the config.
 
 ## All Options
 

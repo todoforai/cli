@@ -12,7 +12,7 @@
     "dist/todoforai-cli.js"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --target=bun --outfile dist/todoforai-cli.js --external ws",
+    "build": "bun build src/index.ts --target=node --outfile dist/todoforai-cli.js --external ws",
     "prepublishOnly": "bun run build",
     "start": "bun run src/index.ts",
     "dev": "bun run src/index.ts"
@@ -30,5 +30,8 @@
   "devDependencies": {
     "@types/ws": "^8.5.13",
     "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

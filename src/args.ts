@@ -13,7 +13,7 @@ export function getEnv(name: string): string {
 
 export function printUsage() {
   process.stderr.write(`
-tfa-cli — TODOforAI CLI (Bun). Legacy aliases: todoforai-cli, todoai.
+tfa-cli — TODOforAI CLI. Legacy aliases: todoforai-cli, todoai.
 
 Usage:
   tfa-cli login                          # Browser-based device auth

@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * TODOforAI CLI (Bun) — Create and manage todos
+ * TODOforAI CLI — Create and manage todos
  * Usage: tfa-cli "prompt text" | echo "content" | todoforai-cli [options]
  */
 
-import { realpathSync, readFileSync } from "fs";
+import { realpathSync, readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
@@ -18,7 +18,7 @@ try {
   checkForUpdates(JSON.parse(readFileSync(pkgPath, "utf-8")));
 } catch {}
 import { ApiClient, restBasePath, FrontendWebSocket, type RegistrySpec } from "@shared/api";
-import { qualifiedModelIds } from "@shared/fbe";
+import { qualifiedModelIds, getMimeTypeFromFilename } from "@shared/fbe";
 import { normalizeApiUrl } from "@shared/credentials";
 
 import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCliArgs } from "./args";
@@ -196,7 +196,7 @@ async function main() {
     return;
   }
   if (args["reset-config"]) {
-    const { existsSync, unlinkSync } = await import("fs");
+    const { unlinkSync } = await import("fs");
     if (existsSync(cfg.path)) { unlinkSync(cfg.path); console.log(`Configuration reset: ${formatPathWithTilde(cfg.path)}`); }
     else console.log("No configuration file to reset");
     return;
@@ -402,15 +402,19 @@ async function main() {
     // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
     let blob: Blob, name: string;
     if (filePath === "-") {
-      blob = new Blob([await Bun.readableStreamToArrayBuffer(Bun.stdin.stream())]);
+      const chunks: Buffer[] = [];
+      for await (const c of process.stdin) chunks.push(c as Buffer);
+      blob = new Blob([Buffer.concat(chunks)]);
       if (blob.size === 0) { process.stderr.write(`${RED}No data on stdin${RESET}\n`); process.exit(1); }
       // --title is presentation metadata; it must not become the stored filename
       // (it would also silently drive mime detection). Use --mime for the type.
       name = "stdin";
     } else {
-      const file = Bun.file(resolve(filePath));
-      if (!(await file.exists())) { process.stderr.write(`${RED}File not found: ${filePath}${RESET}\n`); process.exit(1); }
-      blob = file;
+      const abs = resolve(filePath);
+      if (!existsSync(abs)) { process.stderr.write(`${RED}File not found: ${filePath}${RESET}\n`); process.exit(1); }
+      // Bun.file() typed the blob from its extension; keep that so the multipart part
+      // carries a mimetype and the server renders by it (--mime still overrides).
+      blob = new Blob([readFileSync(abs)], { type: getMimeTypeFromFilename(abs) || undefined });
       name = path.basename(filePath);
     }
 
