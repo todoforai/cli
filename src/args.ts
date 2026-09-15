@@ -36,10 +36,10 @@ Usage:
   tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
                                             #   [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
                                             #   --link = compact chip (name+size+download) instead of inline render
-                                            #   The file gets a stable public url: show.todofor.ai/<site-id>
-                                            #   (latest; /<site-id>/<attachment-id> = frozen version). --site <id>
-                                            #   pushes a new version to an existing url (from any todo).
-  tfa-cli show rm <site-id>           # Take a shown file down (all versions)
+                                            #   Prints "<todoId>:<alias|id>  <public url>". Re-showing with the same
+                                            #   --alias updates that block in place and pushes a new version to the
+                                            #   same url (older versions stay reachable at /<id>/<version>).
+  tfa-cli show rm <ref|alias>         # Take a shown file down (block, url, every version)
   tfa-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
                                             #   [--project <id>] [--card <name>] [--json]
                                             #   no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
@@ -136,7 +136,6 @@ export function parseCliArgs() {
       mime: { type: "string" },
       card: { type: "string" },
       link: { type: "boolean", default: false },
-      site: { type: "string" },
       direction: { type: "string" },
       "business-context": { type: "string" },
       seed: { type: "string" },

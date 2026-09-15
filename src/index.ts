@@ -339,13 +339,18 @@ async function main() {
     return;
   }
 
-  // show rm <site-id>: take a shown file down (all versions). The site id is
-  // printed by `show`; the bytes themselves are just `curl <url>`.
+  // show rm <ref|alias>: take a shown file down — block, public url, every
+  // version. `<todoId>:<alias>` as printed by `show`, or a bare alias in the
+  // current todo.
   if (positionals[0] === "show" && positionals[1] === "rm") {
-    const id = positionals[2];
-    if (!id) { process.stderr.write(`${RED}Usage: tfa-cli show rm <site-id>${RESET}\n`); process.exit(2); }
-    await api.deleteSite(id);
-    process.stderr.write(`${GREEN}✅ deleted ${id}${RESET}\n`);
+    const arg = positionals[2];
+    if (!arg) { process.stderr.write(`${RED}Usage: tfa-cli show rm <ref|alias>${RESET}\n`); process.exit(2); }
+    const sep = arg.indexOf(":");
+    const todoId = sep >= 0 ? arg.slice(0, sep) : (getEnv("TODO_ID") || cfgScope.data.last_todo_id);
+    const key = sep >= 0 ? arg.slice(sep + 1) : arg;
+    if (!todoId || !key) { process.stderr.write(`${RED}show rm: need <todoId>:<alias> (no current todo)${RESET}\n`); process.exit(2); }
+    await api.removeShow(todoId, key);
+    process.stderr.write(`${GREEN}✅ removed ${todoId}:${key}${RESET}\n`);
     return;
   }
 
@@ -354,7 +359,7 @@ async function main() {
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
     const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--site <id>]${RESET}\n`); process.exit(2); }
+    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
     // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
@@ -379,10 +384,9 @@ async function main() {
     const res = await api.showFile(todoId, blob, name, {
       title: args.title, alias: args.alias, mime: args.mime, card: args.card as string | undefined,
       display: args.link ? "link" : undefined,
-      site: args.site as string | undefined,
     });
     if (args.json) console.log(JSON.stringify(res, null, 2));
-    else console.log(res.url ? `${res.ref}  site=${res.siteId}  ${res.url}` : res.ref);
+    else console.log(res.url ? `${res.ref}  ${res.url}` : res.ref);
     return;
   }
 
