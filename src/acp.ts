@@ -187,10 +187,11 @@ class TodoforaiAgent implements acp.Agent {
     const blocks = new Map<string, BlockView>();
     const view = (id: string) => blocks.get(id) ?? blocks.set(id, new BlockView()).get(id)!;
 
-    // Block metadata streams in pieces (the first BLOCK_UPDATE often precedes
-    // block:start_* with block_type/cmd, and the backend later adds a generated
-    // `title`), so announce once and then patch title/kind as they settle.
+    // Block metadata streams in pieces (a status-only BLOCK_UPDATE can precede
+    // block:start_* with block_type/cmd), so announce once and then patch
+    // title/kind as they settle. Text blocks stream as agent_message_chunk.
     const announce = (id: string, b: BlockView) => {
+      if (b.info.block_type === "text") return;
       const title = toolTitle(b.info), kind = ACP_KIND[classifyBlock(b.info)] ?? "other";
       const path = b.info.path || b.info.filePath;
       if (!b.announced) {
@@ -235,7 +236,7 @@ class TodoforaiAgent implements acp.Agent {
 
       if (type.startsWith("block:start_")) {
         b.info = { ...b.info, ...payload };
-        if (payload.block_type !== "text") announce(id, b);
+        announce(id, b);
         return;
       }
       if (type === "block:sh_msg_result") {
