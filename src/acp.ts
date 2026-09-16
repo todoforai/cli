@@ -9,7 +9,7 @@
 
 import { realpathSync } from "fs";
 import { Readable, Writable } from "stream";
-import * as acp from "@zed-industries/agent-client-protocol";
+import * as acp from "@agentclientprotocol/sdk";
 import { ApiClient, FrontendWebSocket } from "@shared/api";
 import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
 import { NEVER_SCHEDULED_TIMESTAMP } from "@shared/fbe";
