@@ -36,6 +36,7 @@ import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
+import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
 import { runAcp } from "./acp";
@@ -689,7 +690,7 @@ async function main() {
   // bridge can register under `mayfly-<todoId>` before the todo exists; the
   // create below then reuses the same id. Workspace = --path/cwd. While the
   // bridge lives, the backend scopes this todo's dispatches to EXACTLY it.
-  const isolatedTodoId = args.isolated ? crypto.randomUUID() : undefined;
+  const isolatedTodoId = args.isolated ? randomUUID() : undefined;
   const mayfly = isolatedTodoId
     ? await spawnMayflyBridge(apiUrl, isolatedTodoId, realpathSync(resolve((args.path as string) || ".")), { debug: !!args.debug, apiKey })
     : null;
@@ -838,7 +839,7 @@ async function main() {
     }
     throw e;
   }
-  const actualTodoId = todo.id || crypto.randomUUID();
+  const actualTodoId = todo.id || randomUUID();
   cfgScope.setLastTodoId(actualTodoId);
 
   await linkToSpawningBlock(api, actualTodoId);

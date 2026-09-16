@@ -4,11 +4,41 @@ import { spawn, spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { ApiClient } from "@shared/api";
+import { ApiClient, restBasePath } from "@shared/api";
+
+const INSTALLER_URL = "https://todofor.ai/bridge";
+// The installer's prefix. An installer in a `curl | sh` pipe can't extend THIS
+// process's PATH, so after installing we resolve the binary here.
+const INSTALL_PREFIX = process.env.TODOFORAI_PREFIX || path.join(os.homedir(), ".todoforai", "bin");
+// Hard cap on the install: a stalled download must not hang an ACP host.
+const INSTALL_TIMEOUT_MS = 90_000;
+
+/** Absolute path of the bridge binary, or the bare name when it is on PATH. */
+let bridgeBin = "todoforai-bridge";
+export const bridgeBinary = () => bridgeBin;
+
+function probeBridge(bin: string): boolean {
+  return spawnSync(bin, ["--version"], { stdio: "ignore" }).status === 0;
+}
 
 export function hasBridge(): boolean {
-  const probe = spawnSync("todoforai-bridge", ["--version"], { stdio: "ignore" });
-  return probe.status === 0;
+  if (probeBridge(bridgeBin)) return true;
+  const installed = path.join(INSTALL_PREFIX, "todoforai-bridge");
+  if (!probeBridge(installed)) return false;
+  bridgeBin = installed;
+  return true;
+}
+
+/** Install the bridge with the official script (sha256-verified release
+ *  binary). Windows has no installer yet. Progress goes to stderr only —
+ *  stdout may be a protocol channel (ACP). */
+export function installBridge(): boolean {
+  if (process.platform !== "linux" && process.platform !== "darwin") return false;
+  console.error(`\x1b[2mInstalling TODOforAI Bridge (${INSTALLER_URL})...\x1b[0m`);
+  const r = spawnSync("sh", ["-c", `curl -fsSL --connect-timeout 10 --max-time 30 ${INSTALLER_URL} | sh`],
+    { stdio: ["ignore", "ignore", "inherit"], timeout: INSTALL_TIMEOUT_MS, killSignal: "SIGKILL" });
+  if (r.error?.code === "ETIMEDOUT") console.error("\x1b[33mBridge install timed out\x1b[0m");
+  return r.status === 0 && hasBridge();
 }
 
 function isLocalHost(hostname: string): boolean {
@@ -57,6 +87,8 @@ export function bridgeRunArgs(apiUrl: string): string[] {
   return [];
 }
 
+// No --port here: `login --port` is the Noise RPC port (4100 / dev 14100),
+// not the HTTP port bridgeRunArgs carries; the bridge picks it from the host.
 function bridgeLoginArgs(apiUrl: string): string[] {
   const url = parseApiUrl(apiUrl);
   if (!url) return ["login"];
@@ -71,14 +103,37 @@ function bridgeWhoamiArgs(apiUrl: string): string[] {
 /** Local bridge device id for this apiUrl's profile, or null if not logged in.
  *  Parses `todoforai-bridge whoami` ("Device: <name> (id: <uuid>)"). */
 export function bridgeDeviceId(apiUrl: string): string | null {
-  const r = spawnSync("todoforai-bridge", bridgeWhoamiArgs(apiUrl), { encoding: "utf-8" });
+  const r = spawnSync(bridgeBin, bridgeWhoamiArgs(apiUrl), { encoding: "utf-8" });
   if (r.status !== 0) return null;
   const m = (r.stdout || "").match(/^Device:.*\(id:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/im);
   return m ? m[1] : null;
 }
 
+/** Enroll the bridge without a second browser round-trip: the CLI's API key
+ *  mints a single-use enrollment token, `login --token` redeems it. */
+async function enrollBridgeWithApiKey(apiUrl: string, apiKey: string): Promise<boolean> {
+  if (apiKey.startsWith("dst_")) return false;  // device-session tokens may not mint (backend denies)
+  let token: string;
+  try {
+    const res = await fetch(`${apiUrl}${restBasePath(apiKey)}/cli/enroll/mint`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
+      body: "{}",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) { console.error(`\x1b[33mBridge enroll: mint failed (${res.status})\x1b[0m`); return false; }
+    token = (await res.json()).token;
+  } catch (e: any) {
+    console.error(`\x1b[33mBridge enroll: mint failed (${e?.message || e})\x1b[0m`);
+    return false;
+  }
+  const login = spawnSync(bridgeBin, [...bridgeLoginArgs(apiUrl), "--token", token],
+    { stdio: ["ignore", "ignore", "inherit"], timeout: 30_000, killSignal: "SIGKILL" });
+  return login.status === 0;
+}
+
 export function ensureBridgeCredentials(apiUrl: string, opts: { interactive?: boolean } = {}): boolean {
-  const whoami = spawnSync("todoforai-bridge", bridgeWhoamiArgs(apiUrl), { stdio: "ignore" });
+  const whoami = spawnSync(bridgeBin, bridgeWhoamiArgs(apiUrl), { stdio: "ignore" });
   if (whoami.status === 0) return true;
   // stdio is a protocol channel for some callers (ACP) — never run the interactive login there.
   if (opts.interactive === false) {
@@ -89,7 +144,7 @@ export function ensureBridgeCredentials(apiUrl: string, opts: { interactive?: bo
   // Do not hide the bridge's first-run device-login URL in bridge.log. Run the
   // login subcommand in the foreground once, then spawn the daemon detached.
   console.error("\x1b[2mBridge credentials not found. Starting `todoforai-bridge login`...\x1b[0m");
-  const login = spawnSync("todoforai-bridge", bridgeLoginArgs(apiUrl), { stdio: "inherit" });
+  const login = spawnSync(bridgeBin, bridgeLoginArgs(apiUrl), { stdio: "inherit" });
   return login.status === 0;
 }
 
@@ -118,12 +173,15 @@ async function waitForBridgeOnline(apiUrl: string, apiKey: string, deviceId: str
 }
 
 export async function ensureBridgeRunning(apiUrl: string, apiKey: string, opts: { interactive?: boolean } = {}): Promise<boolean> {
-  if (!hasBridge()) {
-    console.error("\x1b[2mBridge not started: `todoforai-bridge` was not found on PATH. Install TODOforAI Bridge, or pass --no-bridge (or deprecated --no-edge) to silence this.\x1b[0m");
+  if (!hasBridge() && !installBridge()) {
+    console.error(`\x1b[2mBridge not started: \`todoforai-bridge\` was not found on PATH. Install it (curl -fsSL ${INSTALLER_URL} | sh), or pass --no-bridge (or deprecated --no-edge) to silence this.\x1b[0m`);
     return false;
   }
 
-  if (!ensureBridgeCredentials(apiUrl, opts)) {
+  const hasCreds = spawnSync(bridgeBin, bridgeWhoamiArgs(apiUrl), { stdio: "ignore" }).status === 0
+    || (await enrollBridgeWithApiKey(apiUrl, apiKey))
+    || ensureBridgeCredentials(apiUrl, opts);
+  if (!hasCreds) {
     console.error("\x1b[33mBridge not started: `todoforai-bridge login` did not complete successfully.\x1b[0m");
     return false;
   }
@@ -143,7 +201,7 @@ export async function ensureBridgeRunning(apiUrl: string, apiKey: string, opts: 
   const logFile = path.join(logDir, "bridge.log");
   const out = fs.openSync(logFile, "a");
 
-  const child = spawn("todoforai-bridge", bridgeRunArgs(apiUrl), {
+  const child = spawn(bridgeBin, bridgeRunArgs(apiUrl), {
     detached: true,
     stdio: ["ignore", out, out],
   });

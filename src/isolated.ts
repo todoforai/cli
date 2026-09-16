@@ -10,7 +10,7 @@
 
 import { spawn, type ChildProcess } from "child_process";
 import { restBasePath } from "@shared/api";
-import { bridgeRunArgs, ensureBridgeCredentials, hasBridge } from "./ensure-bridge";
+import { bridgeBinary, bridgeRunArgs, ensureBridgeCredentials, hasBridge } from "./ensure-bridge";
 
 export interface MayflySession {
   child: ChildProcess;
@@ -68,7 +68,7 @@ export async function spawnMayflyBridge(
       for (const p of ["TODOFORAI_", "TODO4AI_"]) delete env[p + n];
     env.TODOFORAI_MAYFLY_TOKEN = sessionToken;
   }
-  const child = spawn("todoforai-bridge", args, { stdio: ["ignore", "pipe", "pipe"], env });
+  const child = spawn(bridgeBinary(), args, { stdio: ["ignore", "pipe", "pipe"], env });
 
   let stopped = false;
   const stop = () => {

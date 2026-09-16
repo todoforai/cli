@@ -14,6 +14,7 @@ import { ApiClient, FrontendWebSocket } from "@shared/api";
 import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
 import { NEVER_SCHEDULED_TIMESTAMP } from "@shared/fbe";
 import { autoCreateAgent } from "./agent";
+import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { getItemId, resolveAgentMatch } from "./select";
 import { classifyBlock } from "./watch";
@@ -146,7 +147,7 @@ class TodoforaiAgent implements acp.Agent {
     const projectId = await this.resolveProject();
     const cwd = realpathSync(p.cwd);
     const agent = await this.resolveAgent(cwd);
-    const todoId = crypto.randomUUID();
+    const todoId = randomUUID();
     this.sessions.set(todoId, { todoId, projectId, agent });
     log(`session ${todoId} agent=${agent.name} cwd=${cwd}`);
     return { sessionId: todoId, modes: await this.modes(agent) };
