@@ -30,7 +30,8 @@ const ACP_KIND: Record<string, acp.ToolKind> = { create: "edit", edit: "edit", r
 
 const toolTitle = (info: any) => {
   const target = info.path || info.filePath || info.cmd || info.name || info.url || info.query || "";
-  return target ? `${info.block_type || "tool"}: ${String(target).slice(0, 120)}` : info.block_type || "tool";
+  if (target) return `${info.block_type || "tool"}: ${String(target).split("\n")[0].slice(0, 120)}`;
+  return info.title || info.block_type || "tool";
 };
 
 /** ACP `tool_call_update.content` REPLACES the collection, so keep the full
@@ -39,6 +40,8 @@ class BlockView {
   info: Record<string, any> = {};
   announced = false;
   permissionAsked = false;
+  title = "";
+  kind: acp.ToolKind = "other";
   output = "";
 
   content(): ToolContent {
@@ -184,11 +187,19 @@ class TodoforaiAgent implements acp.Agent {
     const blocks = new Map<string, BlockView>();
     const view = (id: string) => blocks.get(id) ?? blocks.set(id, new BlockView()).get(id)!;
 
+    // Block metadata streams in pieces (the first BLOCK_UPDATE often precedes
+    // block:start_* with block_type/cmd, and the backend later adds a generated
+    // `title`), so announce once and then patch title/kind as they settle.
     const announce = (id: string, b: BlockView) => {
-      if (b.announced) return;
-      b.announced = true;
+      const title = toolTitle(b.info), kind = ACP_KIND[classifyBlock(b.info)] ?? "other";
       const path = b.info.path || b.info.filePath;
-      void update({ sessionUpdate: "tool_call", toolCallId: id, title: toolTitle(b.info), kind: ACP_KIND[classifyBlock(b.info)] ?? "other", status: "pending", locations: path ? [{ path }] : [], rawInput: { block_type: b.info.block_type, cmd: b.info.cmd, path, changes: b.info.changes } });
+      if (!b.announced) {
+        b.announced = true;
+        void update({ sessionUpdate: "tool_call", toolCallId: id, title, kind, status: "pending", locations: path ? [{ path }] : [], rawInput: { block_type: b.info.block_type, cmd: b.info.cmd, path, changes: b.info.changes } });
+      } else if (title !== b.title || kind !== b.kind) {
+        void update({ sessionUpdate: "tool_call_update", toolCallId: id, title, kind, ...(path && { locations: [{ path }] }) });
+      }
+      b.title = title; b.kind = kind;
     };
 
     const askPermission = async (id: string, b: BlockView, messageId: string) => {
@@ -224,6 +235,7 @@ class TodoforaiAgent implements acp.Agent {
 
       if (type.startsWith("block:start_")) {
         b.info = { ...b.info, ...payload };
+        if (payload.block_type !== "text") announce(id, b);
         return;
       }
       if (type === "block:sh_msg_result") {
@@ -239,8 +251,9 @@ class TodoforaiAgent implements acp.Agent {
 
       const u = payload.updates || {};
       b.info = { ...b.info, ...u };
-      announce(id, b);
       const st = u.status;
+      if (!b.info.block_type && !st) return; // routing-only update (target/cwd) precedes block:start_*
+      announce(id, b);
       const status: acp.ToolCallStatus | undefined = st === "RUNNING" ? "in_progress" : st === "COMPLETED" ? "completed" : ["DENIED", "FAILED", "ERROR"].includes(st) ? "failed" : undefined;
       const contentChanged = u.originalContent !== undefined || u.modifiedContent !== undefined;
       if (status || contentChanged || u.result) {
