@@ -49,6 +49,22 @@ function formatPathWithTilde(path: string): string {
   return path.startsWith(home) ? path.replace(home, "~") : path;
 }
 
+// A prompt is exactly ONE quoted argument. Several bare words are an unquoted
+// command the caller mistyped (`tfa-cli project ls` once spawned an agent on the
+// prompt "project ls"), and a lone word is a mistyped subcommand (`tfa-cli models`).
+// Never silently join them into a todo. Returns undefined when nothing was passed
+// (caller falls back to stdin).
+function promptArg(words: string[]): string | undefined {
+  if (words.length === 0) return undefined;
+  if (words.length > 1 || !/\s/.test(words[0])) {
+    process.stderr.write(
+      `${RED}Error: "${words.join(" ")}" is not a subcommand, and a prompt must be ONE quoted argument, e.g. tfa-cli "fix the login bug" (or pipe it on stdin). Run tfa-cli --help for subcommands.${RESET}\n`,
+    );
+    process.exit(2);
+  }
+  return words[0];
+}
+
 
 // ── interactive loop ─────────────────────────────────────────────────
 
@@ -583,7 +599,7 @@ async function main() {
     // Trailing prompt overrides the spec's default user message (spec name+description);
     // `start <id>` consumed positionals[1], so skip it there.
     const promptWords = positionals[0] === "start" ? positionals.slice(2) : positionals;
-    const content = promptWords.join(" ").trim();
+    const content = (promptArg(promptWords) ?? "").trim();
     const todo = await api.startFromSpec(projectId, templateId, {
       ...(content ? { content } : {}),
       ...(groupTag ? { groupTag } : {}),
@@ -661,7 +677,7 @@ async function main() {
     // todo and watched — same as the create path. Without it we'd just idle in the
     // interactive loop, so `-n` resume would detach having sent nothing.
     const autoApprove = !!args["dangerously-skip-permissions"];
-    const followUp = positionals.length > 0 ? positionals.join(" ") : (process.stdin.isTTY ? "" : await readStdin());
+    const followUp = promptArg(positionals) ?? (process.stdin.isTTY ? "" : await readStdin());
     if (followUp) {
       cfg.addToHistory(followUp);
       await api.addMessage(projectId, followUp, agent, todoId);
@@ -680,12 +696,9 @@ async function main() {
     process.exit(2);
   }
 
-  // A lone word here is a mistyped subcommand, not a prompt (`tfa-cli models`
-  // once spawned an agent on the prompt "models"). Real prompts have spaces.
-  if (positionals.length === 1 && !/\s/.test(positionals[0])) {
-    process.stderr.write(`${RED}Error: "${positionals[0]}" is not a subcommand, and a prompt needs more than one word (or pipe it on stdin).${RESET}\n`);
-    process.exit(2);
-  }
+  // Validate the prompt before spawning bridges/sockets: unquoted words or a
+  // lone word are mistyped commands, never a todo.
+  const argPrompt = promptArg(positionals);
 
   // ── start independent work early ──
   const ws = args["no-watch"] ? null : new FrontendWebSocket(apiUrl, apiKey);
@@ -759,12 +772,7 @@ async function main() {
   process.stderr.write(`${DIM}Tip: ${randomTip()}${RESET}\n`);
 
   // ── read content ──
-  let content: string;
-  if (positionals.length > 0) {
-    content = positionals.join(" ");
-  } else {
-    content = await readStdin();
-  }
+  const content = argPrompt ?? (await readStdin());
 
   // ── select project + agent ──
   // Env inheritance: an agent shell exports TODOFORAI_PROJECT_ID for its todo's
