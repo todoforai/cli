@@ -42,6 +42,7 @@ tfa-cli project — edit the current project
 --project <id> or $TODOFORAI_PROJECT_ID selects the project.
 
 Usage:
+  tfa-cli project list                             Projects you can access (* = default)
   tfa-cli project set <field=value>…               name=… description=… brand=<businessContextId>
                                                     (isPublic refused from an agent shell)
   tfa-cli project default                          Make it the project you land on at /
@@ -111,6 +112,16 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
   const [, sub, ...rest] = positionals;
   const projectId = (args.project as string) || getEnv("PROJECT_ID");
   if (!sub) { printProjectHelp(); process.exit(0); }
+  // `list` is the only project verb that needs no selected project.
+  if (sub === "list" || sub === "ls") {
+    const projects: any[] = await api.listProjects();
+    if (args.json) { console.log(JSON.stringify(projects, null, 2)); return; }
+    for (const p of projects) {
+      const pr = p.project ?? p;
+      process.stderr.write(`${pr.isDefault ? "*" : " "} ${pr.name ?? ""}  ${DIM}${pr.id}${RESET}\n`);
+    }
+    return;
+  }
   if (!projectId) fail("No project — pass --project <id> or set TODOFORAI_PROJECT_ID");
 
   if (sub === "set") {

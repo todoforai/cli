@@ -30,7 +30,7 @@ Usage:
   tfa-cli --list-models [filter]        # List models usable with --model and exit
   tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help'; also 'agent create')
   tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields (see 'todo --help')
-  tfa-cli project set|settings|groups|default|agent …  # Edit the project, groups, defaults (see 'project --help')
+  tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one (see 'project --help')
   tfa-cli brand list|create|select|voice …      # Brands (business contexts) + voice learning (see 'brand --help')
   tfa-cli device list|rename|wallpaper …        # Paired machines (see 'device --help')
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
@@ -115,6 +115,18 @@ All valid statuses:
 `);
 }
 
+// Bare words that unambiguously mean an existing flag: `tfa-cli help` == `--help`.
+// Accepting them is friendlier than erroring on something that already exists.
+const WORD_FLAGS: Record<string, string> = {
+  help: "help",
+  version: "version",
+  models: "list-models",
+  agents: "list-agents",
+  config: "show-config",
+};
+// Subcommands that print their own help; anywhere else a second positional is data.
+const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status"];
+
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
@@ -175,5 +187,14 @@ export function parseCliArgs() {
     strict: false,
   });
   if (values["no-edge"]) values["no-bridge"] = true;
+  // `tfa-cli help` / `tfa-cli models [filter]` → the flag they obviously mean.
+  // Skipped when that mode flag is already set (`--list-models models`), where the
+  // word is the flag's operand, not a command.
+  const asFlag = !values["list-models"] && !values["list-agents"] && !values["show-config"]
+    ? WORD_FLAGS[positionals[0]] : undefined;
+  if (asFlag) { values[asFlag] = true; positionals.shift(); }
+  // `tfa-cli project help` → `project --help`. Elsewhere (`show help`, `next help`)
+  // that slot is data, never a help request.
+  if (positionals[1] === "help" && HELP_SUBCOMMANDS.includes(positionals[0])) { values.help = true; positionals.splice(1, 1); }
   return { values, positionals };
 }
