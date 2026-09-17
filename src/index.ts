@@ -35,6 +35,7 @@ import { selectProject, selectAgent, getDisplayName, getItemId, resolveAgentMatc
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
+import { todoCommand, projectCommand, brandCommand, deviceCommand, printTodoHelp, printProjectHelp, printBrandHelp, printDeviceHelp } from "./manage-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
@@ -156,9 +157,13 @@ async function main() {
   if (args.version) { console.log(VERSION); process.exit(0); }
   if (positionals[0] === "status" && args.help) { printStatusHelp(); process.exit(0); }
   if (positionals[0] === "agent" && args.help) { printAgentHelp(); process.exit(0); }
+  if (positionals[0] === "todo" && args.help) { printTodoHelp(); process.exit(0); }
+  if (positionals[0] === "project" && args.help) { printProjectHelp(); process.exit(0); }
+  if (positionals[0] === "brand" && args.help) { printBrandHelp(); process.exit(0); }
+  if (positionals[0] === "device" && args.help) { printDeviceHelp(); process.exit(0); }
   if ((positionals[0] === "list" || positionals[0] === "ls") && args.help) { printListTodosHelp(); process.exit(0); }
   // Subcommands with their own --help handle it themselves.
-  if (args.help && !["list", "ls", "agent"].includes(positionals[0])) { printUsage(); process.exit(0); }
+  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
   // ── flag compatibility — validated ONCE here, so no later branch can
   // silently ignore a flag (e.g. --template returning before an --isolated
@@ -292,6 +297,10 @@ async function main() {
     process.stderr.write(`${GREEN}✅ Status of ${todoId} set to ${status}${RESET}\n`);
     return;
   }
+  if (positionals[0] === "todo") { await todoCommand(api, positionals, args); return; }
+  if (positionals[0] === "project") { await projectCommand(api, positionals, args); return; }
+  if (positionals[0] === "brand") { await brandCommand(api, positionals, args); return; }
+  if (positionals[0] === "device") { await deviceCommand(api, positionals, args); return; }
   if (positionals[0] === "delete") {
     const todoId = positionals[1];
     if (!todoId) { process.stderr.write(`${RED}Usage: tfa-cli delete <todo-id>${RESET}\n`); process.exit(2); }

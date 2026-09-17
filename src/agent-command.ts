@@ -14,6 +14,9 @@ Usage:
   tfa-cli agent list                            List agents (name, model, id, paths)
   tfa-cli agent get <agent>                     Show a single agent's settings
   tfa-cli agent update <agent> <field=value>…   Update one or more settings
+  tfa-cli agent create [<field=value>…]         Create an agent (defaults, then apply fields)
+  tfa-cli agent global [<field=value>…]         Show / update the user's global agent defaults
+  tfa-cli agent reorder <agent>…                Set the sidebar order (names or ids)
   tfa-cli agent delete <agent>                  Delete an agent configuration (asks to confirm)
 
 <agent> is a name or id (unique partial name also works).
@@ -30,6 +33,10 @@ Examples:
   tfa-cli agent update <agent> model=claude
   tfa-cli agent update <agent> model=anthropic:anthropic/claude-opus-5 temperature=0.5
   tfa-cli agent update <agent> sysmsg="You are a terse video editor."
+  tfa-cli agent create name=Reviewer model=claude sysmsg="Review diffs only."
+
+From an agent shell (dst_ token) permissions, mcpConfigs, edgesMcpConfigs,
+devicesConfig and delete are refused by the backend.
 `);
 }
 
@@ -42,17 +49,21 @@ const FIELD_ALIASES: Record<string, string> = {
 };
 
 /** "field=value" → [canonicalKey, typed value (JSON when parseable, else string)]. */
-function parseAssignment(arg: string): [string, any] {
+export function parseAssignment(arg: string, aliases: Record<string, string> = {}): [string, any] {
   const eq = arg.indexOf("=");
   if (eq < 1) { process.stderr.write(`${RED}Invalid field assignment '${arg}', expected field=value${RESET}\n`); process.exit(2); }
   const rawKey = arg.slice(0, eq);
-  const key = FIELD_ALIASES[rawKey] || rawKey;
+  const key = aliases[rawKey] || rawKey;
   const raw = arg.slice(eq + 1);
   try { return [key, JSON.parse(raw)]; } catch { return [key, raw]; }
 }
 
+export function parseAssignments(args: string[], aliases: Record<string, string> = {}): Record<string, any> {
+  return Object.fromEntries(args.map((a) => parseAssignment(a, aliases)));
+}
+
 /** Resolve an agent by exact id, exact name, prefix, word-boundary, then substring. */
-function resolveAgent(agents: any[], query: string): any {
+export function resolveAgent(agents: any[], query: string): any {
   const { match, ambiguous } = resolveAgentMatch(agents, query);
   if (match) return match;
   if (ambiguous) {
@@ -92,7 +103,7 @@ export async function agentCommand(
     const query = positionals[2];
     const assignments = positionals.slice(3);
     if (!query || !assignments.length) { process.stderr.write(`${RED}Usage: tfa-cli agent update <name|id> <field=value>…${RESET}\n`); process.exit(2); }
-    const updates = Object.fromEntries(assignments.map(parseAssignment));
+    const updates = parseAssignments(assignments, FIELD_ALIASES);
     const agents = await api.listAgentSettings();
     const agent = resolveAgent(agents, query);
     const id = getItemId(agent);
@@ -100,6 +111,34 @@ export async function agentCommand(
     if (args.json) { console.log(JSON.stringify(updated, null, 2)); return; }
     const summary = Object.keys(updates).map((k) => `${k}=${JSON.stringify((updated as any)[k])}`).join(" ");
     process.stderr.write(`${GREEN}✅ ${getDisplayName(agent)} updated: ${summary}${RESET}\n`);
+    return;
+  }
+
+  if (sub === "global") {
+    const updates = parseAssignments(positionals.slice(2), FIELD_ALIASES);
+    const global = Object.keys(updates).length ? await api.updateGlobalAgentSettings(updates) : await api.getGlobalAgentSettings();
+    if (args.json) { console.log(JSON.stringify(global, null, 2)); return; }
+    for (const [k, v] of Object.entries(global)) process.stderr.write(`  ${DIM}${k}:${RESET} ${typeof v === "string" ? v : JSON.stringify(v)}\n`);
+    return;
+  }
+
+  if (sub === "reorder") {
+    const queries = positionals.slice(2);
+    if (!queries.length) { process.stderr.write(`${RED}Usage: tfa-cli agent reorder <agent>…${RESET}\n`); process.exit(2); }
+    const agents = await api.listAgentSettings();
+    const ids = queries.map((q) => getItemId(resolveAgent(agents, q)));
+    await api.reorderAgentSettings(ids);
+    process.stderr.write(`${GREEN}✅ Agents reordered${RESET}\n`);
+    return;
+  }
+
+  if (sub === "create") {
+    const updates = parseAssignments(positionals.slice(2), FIELD_ALIASES);
+    const created = await api.createAgent();
+    const id = getItemId(created);
+    const agent = Object.keys(updates).length ? await api.updateAgentSettings(id, id, updates) : created;
+    if (args.json) { console.log(JSON.stringify(agent, null, 2)); return; }
+    process.stderr.write(`${GREEN}✅ Created agent ${getDisplayName(agent)}${RESET}  ${DIM}${id}${RESET}\n`);
     return;
   }
 

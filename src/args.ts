@@ -28,7 +28,11 @@ Usage:
   tfa-cli acp                           # Agent Client Protocol server on stdio (Zed, JetBrains, …; see README)
   tfa-cli --list-agents                 # List available agents and exit
   tfa-cli --list-models [filter]        # List models usable with --model and exit
-  tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help')
+  tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help'; also 'agent create')
+  tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields (see 'todo --help')
+  tfa-cli project set|settings|groups|default|agent …  # Edit the project, groups, defaults (see 'project --help')
+  tfa-cli brand list|create|select|voice …      # Brands (business contexts) + voice learning (see 'brand --help')
+  tfa-cli device list|rename|wallpaper …        # Paired machines (see 'device --help')
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
   tfa-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
   tfa-cli delete <todo-id>              # Permanently delete a todo
@@ -138,6 +142,10 @@ export function parseCliArgs() {
       link: { type: "boolean", default: false },
       direction: { type: "string" },
       "business-context": { type: "string" },
+      brand: { type: "string" },
+      url: { type: "string" },
+      "pasted-file": { type: "string" },
+      "from-company": { type: "boolean", default: false },
       seed: { type: "string" },
       emails: { type: "string" },
       ttl: { type: "string" },
