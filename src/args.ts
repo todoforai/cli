@@ -15,7 +15,10 @@ export function printUsage() {
   process.stderr.write(`
 tfa-cli — TODOforAI CLI. Legacy aliases: todoforai-cli, todoai.
 
-Usage:
+Usage: tfa-cli [OPTIONS] ["prompt"]
+       tfa-cli [OPTIONS] <COMMAND> [ARGS]
+
+Examples:
   tfa-cli login                          # Browser-based device auth
   tfa-cli "prompt text"                  # Prompt as argument
   tfa-cli -n "Quick task"               # Non-interactive (run and exit)
