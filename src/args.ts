@@ -13,24 +13,19 @@ export function getEnv(name: string): string {
 
 export function printUsage() {
   process.stderr.write(`
-tfa-cli — TODOforAI CLI. Legacy aliases: todoforai-cli, todoai.
+tfa-cli — TODOforAI CLI
 
 Usage: tfa-cli [OPTIONS] ["prompt"]
        tfa-cli [OPTIONS] <COMMAND> [ARGS]
 
 Examples:
   tfa-cli login                          # Browser-based device auth
-  tfa-cli "prompt text"                  # Prompt as argument
-  tfa-cli -n "Quick task"               # Non-interactive (run and exit)
-  echo "content" | tfa-cli              # Pipe from stdin
-  tfa-cli --path /my/project "Fix bug"  # Explicit workspace path
-  tfa-cli -c ["prompt"]                 # Resume last todo (optional prompt sent on attach)
-  tfa-cli --resume <todo-id> ["prompt"] # Resume specific todo (optional prompt sent on attach)
-  tfa-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
-  tfa-cli start <id>                    # Start a TODO from the registry (todoregistry.com)
-  tfa-cli acp                           # Agent Client Protocol server on stdio (Zed, JetBrains, …; see README)
-  tfa-cli agents                        # List available agents and exit
-  tfa-cli models [filter]               # List models usable with --model and exit
+  tfa-cli "prompt text"                  # New todo
+  echo "content" | tfa-cli              # From stdin
+  tfa-cli start <id>                    # Registry template
+  tfa-cli acp                           # Agent Client Protocol (stdio)
+  tfa-cli agents                        # List agents
+  tfa-cli models [filter]               # Available models
   tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help'; also 'agent create')
   tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields (see 'todo --help')
   tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one (see 'project --help')
@@ -39,13 +34,11 @@ Examples:
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
   tfa-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
   tfa-cli delete <todo-id>              # Permanently delete a todo
-  tfa-cli addmessage <todo-id> "text"  # Add a message to an existing todo
+  tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
   tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
                                             #   [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
-                                            #   --link = compact chip (name+size+download) instead of inline render
-                                            #   Prints "<todoId>:<alias|id>  <public url>". Re-showing with the same
-                                            #   --alias updates that block in place and pushes a new version to the
-                                            #   same url (older versions stay reachable at /<id>/<version>).
+                                            #   --link: download chip. Output: "<todoId>:<alias|id>  <public url>".
+                                            #   Same --alias updates in place; old versions: /<id>/<version>.
   tfa-cli show rm <ref|alias>         # Take a shown file down (block, url, every version)
   tfa-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
                                             #   [--project <id>] [--card <name>] [--json]
@@ -62,30 +55,26 @@ Options:
   --agent, -a <name>              Agent name (partial match)
   --group <slug>                 Group new todo; omitted inherits TODOFORAI_GROUP_ID
   --group-name <name>            Display name for --group (last write wins)
-  --model <model>                 Override the agent's model for this todo
-                                  (e.g. anthropic:anthropic/claude-opus-5, openai:openai/gpt-5.6-sol)
-
-  --api-url <url>                 API URL
-  --api-key <key>                 API key
+  --model <model>                 Model for this todo only (see 'models')
+  --api-url <url>
+  --api-key <key>
   --user-id <id>                  Admin HTTP impersonation; requires --no-watch
-  --inspect, -i <todo-id>[@<slice>]     Print chat log (read-only)
-  --template, -t <id> ["prompt"] Start from a registry template (alias: start <id>); prompt overrides the template task
-  --resume, -r [todo-id]          Resume existing todo
-  --continue, -c                  Continue most recent todo
-  --non-interactive, -n           Run to completion and exit without interactive prompt
+  --inspect, -i <todo-id>[@<slice>]  Read chat log; slices: -3:, :1, 5:10, 7
+  --template, -t <id> ["prompt"]   Same as start; prompt overrides template task
+  --resume, -r <todo-id> ["prompt"]  Resume; optional follow-up
+  --continue, -c ["prompt"]       Resume last; optional follow-up
+  --non-interactive, -n           Run to completion, then exit
   --dangerously-skip-permissions  Auto-approve all blocks (for CI/benchmarks)
   --allow-all                     Set permissions to allow all tools (no approval needed)
   --raw-sysmsg <file>             Use file contents verbatim as system prompt (new TODO only)
   --no-watch                      Create todo and exit
-  --isolated                      Spawn an ephemeral, task-scoped bridge: the agent sees ONLY
-                                  this machine (workspace = --path/cwd); session dies with the CLI
+  --isolated                      Agent sees ONLY this machine + dir (no cloud VM/other devices); ends with CLI
   --no-bridge                     Do not auto-spawn bridge
-  --no-edge                       Deprecated alias for --no-bridge
-  --json                          Output as JSON
+  --json
   --detailed                      'inspect --json': keep ids, timestamps, agentSettingsId, scheduledTimestamp
   --format-anthropic              'inspect --json': Anthropic-style shape (tool_result in next user msg); attachment sources are uri-typed, so not a 1:1 messages.create input
   --safe                          Validate API key upfront
-  --debug, -d                     Debug output
+  --debug, -d
   --debug-dump                    Attach LLM request debug info per turn (requires server grant)
   help | version | config         = -h | -v | --show-config   (--reset-config wipes it)
 `);
