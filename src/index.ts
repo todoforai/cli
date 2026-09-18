@@ -21,7 +21,7 @@ import { ApiClient, restBasePath, FrontendWebSocket, type RegistrySpec } from "@
 import { qualifiedModelIds, getMimeTypeFromFilename } from "@shared/fbe";
 import { normalizeApiUrl } from "@shared/credentials";
 
-import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, parseCliArgs } from "./args";
+import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, printShowHelp, parseCliArgs } from "./args";
 import { readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
@@ -172,6 +172,7 @@ async function main() {
 
   if (args.version) { console.log(VERSION); process.exit(0); }
   if (positionals[0] === "status" && args.help) { printStatusHelp(); process.exit(0); }
+  if ((positionals[0] === "show" || positionals[0] === "open") && args.help) { printShowHelp(); process.exit(0); }
   if (positionals[0] === "agent" && args.help) { printAgentHelp(); process.exit(0); }
   if (positionals[0] === "todo" && args.help) { printTodoHelp(); process.exit(0); }
   if (positionals[0] === "project" && args.help) { printProjectHelp(); process.exit(0); }

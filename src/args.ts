@@ -26,28 +26,22 @@ Examples:
   tfa-cli acp                           # Agent Client Protocol (stdio)
   tfa-cli agents                        # List agents
   tfa-cli models [filter]               # Available models
-  tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help'; also 'agent create')
-  tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields (see 'todo --help')
-  tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one (see 'project --help')
-  tfa-cli brand list|create|select|voice …      # Brands (business contexts) + voice learning (see 'brand --help')
-  tfa-cli device list|rename|wallpaper …        # Paired machines (see 'device --help')
-  tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated); see 'list --help'
-  tfa-cli status <todo-id> <STATUS>     # Update a todo's status (run 'status --help' for the full list)
+  tfa-cli agent list|get|update|create …        # Agents (update <agent> model=…)
+  tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields
+  tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one
+  tfa-cli brand list|create|select|voice …      # Brands (business contexts) + voice learning
+  tfa-cli device list|rename|wallpaper …        # Paired machines
+  tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated)
+  tfa-cli status <todo-id> <STATUS>     # Update a todo's status
   tfa-cli delete <todo-id>              # Permanently delete a todo
   tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
-  tfa-cli show <file|-> [todo-id]     # Show a file in the chat (rendered by mimetype; - reads stdin)
-                                            #   [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
-                                            #   --link: download chip. Output: "<todoId>:<alias|id>  <public url>".
-                                            #   Same --alias updates in place; old versions: /<id>/<version>.
-  tfa-cli show rm <ref|alias>         # Take a shown file down (block, url, every version)
-  tfa-cli show list [todo-id]         # List show blocks (ref, title, mime/url, card)
-                                            #   [--project <id>] [--card <name>] [--json]
-                                            #   no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
-  tfa-cli open <url> [todo-id]        # Show a live http(s) url in the chat as a preview
-                                            #   [--title T] [--alias A] [--json]
-  tfa-cli recommend --template <id>    # Add a template as a recommendation card (see 'todoregistry-cli create')
-  tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> ownership links for a project you own
-  tfa-cli next [--direction "<text>"]  # Ask the analyzer for growth recommendation cards (optional free-text steer)
+  tfa-cli show <file|-> [todo-id]     # Render a local file (image/pdf/html…) in the chat; - = stdin
+  tfa-cli show list|rm …              # List / take down shown files
+  tfa-cli open <url> [todo-id]        # Live url preview in the chat
+  tfa-cli recommend --template <id>    # Add a template as a recommendation card
+  tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> links for a project you own
+  tfa-cli next [--direction "<text>"]  # Analyzer growth recommendation cards
+  tfa-cli <command> help                # Details per command
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -71,12 +65,31 @@ Options:
   --isolated                      Agent sees ONLY this machine + dir (no cloud VM/other devices); ends with CLI
   --no-bridge                     Do not auto-spawn bridge
   --json
-  --detailed                      'inspect --json': keep ids, timestamps, agentSettingsId, scheduledTimestamp
-  --format-anthropic              'inspect --json': Anthropic-style shape (tool_result in next user msg); attachment sources are uri-typed, so not a 1:1 messages.create input
+  --detailed | --format-anthropic  inspect --json: keep ids/timestamps | Anthropic messages shape
   --safe                          Validate API key upfront
   --debug, -d
   --debug-dump                    Attach LLM request debug info per turn (requires server grant)
   help | version | config         = -h | -v | --show-config   (--reset-config wipes it)
+`);
+}
+
+export function printShowHelp() {
+  process.stderr.write(`
+tfa-cli show — put a file or url into the chat
+
+Usage:
+  tfa-cli show <file|-> [todo-id]     Render a file by mimetype (- reads stdin)
+                                      [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
+                                      --link: compact download chip instead of inline render
+                                      Prints "<todoId>:<alias|id>  <public url>". Re-showing with the same
+                                      --alias updates the block in place; old versions stay at /<id>/<version>
+  tfa-cli show rm <ref|alias>         Take it down (block, url, every version)
+  tfa-cli show list [todo-id]         List show blocks (ref, title, mime/url, card)
+                                      [--project <id>] [--card <name>] [--json]
+                                      no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
+  tfa-cli open <url> [todo-id]        Live http(s) url as a preview  [--title T] [--alias A] [--json]
+
+todo-id defaults to $TODOFORAI_TODO_ID (agent shell) or the last todo this CLI touched.
 `);
 }
 
@@ -113,7 +126,7 @@ const WORD_FLAGS: Record<string, string> = {
   config: "show-config",
 };
 // Subcommands that print their own help; anywhere else a second positional is data.
-const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status"];
+const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status", "show", "open"];
 
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
