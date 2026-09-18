@@ -58,7 +58,7 @@ Options:
   --resume, -r <todo-id> ["prompt"]  Resume; optional follow-up
   --continue, -c ["prompt"]       Resume last; optional follow-up
   --non-interactive, -n           Run to completion, then exit
-  --dangerously-skip-permissions  CLI auto-approves every block (CI/benchmarks)
+  --dangerously-skip-permissions  CLI auto-approves every block
   --allow-all                     Agent permissions allow:*:* — nothing ever asks
   --raw-sysmsg <file>             Use file contents verbatim as system prompt (new TODO only)
   --no-watch                      Create todo and exit
