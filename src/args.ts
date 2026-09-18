@@ -26,8 +26,8 @@ Usage:
   tfa-cli --inspect <todo-id>[@<slice>] # Read chat log. <slice> = -3:, :1, 5:10, 7  (Python-style)
   tfa-cli start <id>                    # Start a TODO from the registry (todoregistry.com)
   tfa-cli acp                           # Agent Client Protocol server on stdio (Zed, JetBrains, …; see README)
-  tfa-cli --list-agents                 # List available agents and exit
-  tfa-cli --list-models [filter]        # List models usable with --model and exit
+  tfa-cli agents                        # List available agents and exit
+  tfa-cli models [filter]               # List models usable with --model and exit
   tfa-cli agent update <agent> model=<model>    # Update agent settings (see 'agent --help'; also 'agent create')
   tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields (see 'todo --help')
   tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one (see 'project --help')
@@ -61,8 +61,8 @@ Options:
   --group-name <name>            Display name for --group (last write wins)
   --model <model>                 Override the agent's model for this todo
                                   (e.g. anthropic:anthropic/claude-opus-5, openai:openai/gpt-5.6-sol)
-  --list-agents                   List available agents (name, id, workspace paths) and exit
-  --list-models                   List models usable with --model (optional substring filter) and exit
+  --list-agents                   Same as 'agents'
+  --list-models                   Same as 'models'
   --api-url <url>                 API URL
   --api-key <key>                 API key
   --user-id <id>                  Admin HTTP impersonation; requires --no-watch
@@ -85,10 +85,10 @@ Options:
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --debug-dump                    Attach LLM request debug info per turn (requires server grant)
-  --show-config                   Show config
+  --show-config                   Show config (also: config)
   --reset-config                  Reset config file
-  --version, -v                   Print version and exit
-  --help, -h                      Show this help
+  --version, -v                   Print version and exit (also: version)
+  --help, -h                      Show this help (also: help, <subcommand> help)
 `);
 }
 
