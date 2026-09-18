@@ -61,8 +61,7 @@ Options:
   --group-name <name>            Display name for --group (last write wins)
   --model <model>                 Override the agent's model for this todo
                                   (e.g. anthropic:anthropic/claude-opus-5, openai:openai/gpt-5.6-sol)
-  --list-agents                   Same as 'agents'
-  --list-models                   Same as 'models'
+
   --api-url <url>                 API URL
   --api-key <key>                 API key
   --user-id <id>                  Admin HTTP impersonation; requires --no-watch
@@ -85,10 +84,8 @@ Options:
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --debug-dump                    Attach LLM request debug info per turn (requires server grant)
-  --show-config                   Show config (also: config)
   --reset-config                  Reset config file
-  --version, -v                   Print version and exit (also: version)
-  --help, -h                      Show this help (also: help, <subcommand> help)
+  help | version | config         Also as --help/-h, --version/-v, --show-config
 `);
 }
 
