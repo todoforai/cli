@@ -84,8 +84,7 @@ Options:
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --debug-dump                    Attach LLM request debug info per turn (requires server grant)
-  --reset-config                  Reset config file
-  help | version | config         Also as --help/-h, --version/-v, --show-config
+  help | version | config         = -h | -v | --show-config   (--reset-config wipes it)
 `);
 }
 
