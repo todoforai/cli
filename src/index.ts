@@ -35,7 +35,7 @@ import { selectProject, selectAgent, getDisplayName, getItemId, resolveAgentMatc
 import { watchTodo } from "./watch";
 import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
-import { todoCommand, projectCommand, brandCommand, deviceCommand, printTodoHelp, printProjectHelp, printBrandHelp, printDeviceHelp } from "./manage-command";
+import { todoCommand, projectCommand, brandCommand, deviceCommand, printTodoHelp, printProjectHelp, printBrandHelp, printDeviceHelp, voiceDeviceCommand } from "./manage-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
@@ -238,6 +238,10 @@ async function main() {
       process.exit(2);
     }
   }
+
+  // Device-only voice verbs read local CLIs (zele, tfa-memory…) and never call the API:
+  // no TODOforAI login needed, so the web UI can run them on any host.
+  if (positionals[0] === "brand" && positionals[1] === "voice" && await voiceDeviceCommand(positionals.slice(2), args)) return;
 
   // ── device login ──
   const deviceLogin = () => runDeviceLogin(apiUrl).catch((e) => {

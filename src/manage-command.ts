@@ -5,6 +5,7 @@ import { parseAssignments, resolveAgent } from "./agent-command";
 import { getEnv } from "./args";
 import { getDisplayName, getItemId } from "./select";
 import { DIM, GREEN, RED, RESET } from "./colors";
+import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice-collect";
 
 export function printTodoHelp() {
   process.stderr.write(`
@@ -193,12 +194,18 @@ Usage:
   tfa-cli brand select <brand|none>                Active brand for the account
   tfa-cli brand voice                              Learned profile + sources
   tfa-cli brand voice answers [<q>=<a>…]           Show / set the brand-voice answers (strings)
-  tfa-cli brand voice collect <channel> [--url U | --pasted-file <F|->]
-                                                   Add a writing sample source
-                                                   channels: X LinkedIn Facebook Instagram
-                                                             Gmail Outlook Slack Teams
+  tfa-cli brand voice collect <channel> [--url U | --pasted-file <F|-> | --max N]
+                                                   Add a writing sample source.
+                                                   On this device (signed-in CLI, reply pairs):
+                                                     Gmail (zele)  Outlook (outlook-api)  Chat (tfa-memory)
+                                                   Server-side (--url or paste):
+                                                     X LinkedIn Facebook Instagram Slack Teams
+                                                   --dry-run  print the samples as JSONL, store nothing
+  tfa-cli brand voice check [<channel>|--all]      Can this device read the channel? tool, login, sample count
   tfa-cli brand voice remove <channel>
   tfa-cli brand voice learn [--from-company]       Run the refinement loop, store the profile
+  tfa-cli brand voice correct "<what is off>"      Tell the learner what it got wrong; profile is updated
+                                                   in one pass and the correction is kept for every re-learn
 
 <brand> is an id or name (unique partial works). Voice subcommands use the
 selected brand unless --brand <id|name> is given (--pasted-file - reads stdin).
@@ -261,8 +268,48 @@ export async function brandCommand(api: ApiClient, positionals: string[], args: 
   fail(`Unknown 'brand' subcommand: ${sub}`);
 }
 
+/** Reads the channel on this device and prints JSONL — no account needed, so the web UI can run it on any host. */
+function dryCollect(channel: string, max: number) {
+  const reason = checkChannel(channel);
+  if (reason) fail(`${channel}: ${reason}`);
+  const { samples, note } = collectChannel(channel, max);
+  for (const x of samples) console.log(JSON.stringify(x));
+  process.stderr.write(`${DIM}${samples.length} samples${note ? ` · ${note}` : ""} (not stored)${RESET}\n`);
+}
+
+/** `brand voice check|collect --dry-run`: read the channel on this device only. Returns false when the verb needs the API. */
+export async function voiceDeviceCommand(rest: string[], args: Record<string, any>): Promise<boolean> {
+  const [verb, ...vargs] = rest;
+  if (verb === "check") {
+    const channels = args.all || !vargs[0] ? DEVICE_CHANNELS : [vargs[0]];
+    let failed = 0;
+    const report: Record<string, { ok: boolean; reason?: string; samples?: number; note?: string }> = {};
+    for (const ch of channels) {
+      const reason = checkChannel(ch);
+      if (reason) { failed++; report[ch] = { ok: false, reason }; continue; }
+      try {
+        const r = collectChannel(ch, Number(args.max ?? 10));
+        const bad = r.samples.filter((x) => !x.text.trim() || (ADAPTERS[ch] && !x.prompt)).length; // reply channels must carry the prompt
+        const ok = r.samples.length > 0 && bad === 0;
+        if (!ok) failed++;
+        report[ch] = { ok, samples: r.samples.length, ...(r.note && { note: r.note }), ...(bad ? { reason: `${bad} sample(s) without a prompt` } : r.samples.length ? {} : { reason: "no samples came back" }) };
+      } catch (e: any) { failed++; report[ch] = { ok: false, reason: e.message }; }
+    }
+    if (args.json) console.log(JSON.stringify(report, null, 2));
+    else for (const [ch, r] of Object.entries(report)) process.stderr.write(`${r.ok ? GREEN + "✅" : RED + "❌"} ${ch}${RESET}  ${DIM}${r.ok ? `${r.samples} samples${r.note ? ` · ${r.note}` : ""}` : r.reason}${RESET}\n`);
+    process.exit(failed ? 1 : 0);
+  }
+  if (verb === "collect" && args["dry-run"]) {
+    if (!vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> --dry-run [--max N]");
+    dryCollect(vargs[0], Number(args.max ?? 40));
+    return true;
+  }
+  return false;
+}
+
 async function voiceCommand(api: ApiClient, rest: string[], args: Record<string, any>) {
   const [verb, ...vargs] = rest;
+  if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --pasted-file F|- | --max N] [--dry-run]");
   const onboarding = await api.getOnboarding();
 
   if (verb === "answers") {
@@ -292,11 +339,22 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
   }
   if (verb === "collect") {
     const channel = vargs[0];
-    if (!channel) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --pasted-file F|-]");
     let pasted: string | undefined;
     if (args["pasted-file"]) {
       const { readFileSync } = await import("node:fs");
       pasted = readFileSync(args["pasted-file"] === "-" ? 0 : args["pasted-file"], "utf8");
+    }
+    // Signed-in CLI on this device beats a crawl: full history, real reply pairs.
+    const onDevice = !pasted && !args.url && ADAPTERS[channel];
+    if (onDevice) {
+      const reason = checkChannel(channel);
+      if (reason) fail(`${channel}: ${reason}`);
+      process.stderr.write(`${DIM}reading ${channel} on this device…${RESET}\n`);
+      const { samples, note } = collectChannel(channel, Number(args.max ?? 40));
+      if (!samples.length) fail(`${channel}: nothing usable came back${note ? ` (${note})` : ""}`);
+      const { sources } = await api.collectVoiceSource(brand.id, channel, { samples });
+      process.stderr.write(`${GREEN}✅ ${channel}: ${samples.length} reply pairs stored (${sources.length} source(s))${RESET}\n`);
+      return;
     }
     const { sources } = await api.collectVoiceSource(brand.id, channel, { url: args.url, pasted });
     process.stderr.write(`${GREEN}✅ ${channel} collected (${sources.length} source(s))${RESET}\n`);
@@ -319,6 +377,21 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
     });
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     process.stderr.write(`${GREEN}✅ voice learned (match ${res.match}/100, source ${res.source})${RESET}\n${res.profile}\n`);
+    return;
+  }
+  if (verb === "correct") {
+    const text = vargs.join(" ").trim();
+    if (!text) fail('Usage: tfa-cli brand voice correct "<what is off>"');
+    const stored = onboarding.voiceProfiles?.[brand.id];
+    if (!stored?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
+    process.stderr.write(`${DIM}applying correction…${RESET}\n`);
+    const res = await api.refineBrandVoice(brand.id, onboarding.styleAnswers ?? {}, undefined, text);
+    if (!res.profile) fail("The correction pass returned nothing — try rewording it");
+    const { [brand.id]: _stale, ...styleAiAnswers } = onboarding.styleAiAnswers ?? {};
+    await api.patchOnboarding({ voiceProfiles: { ...(onboarding.voiceProfiles ?? {}), [brand.id]: { ...res, updatedAt: Date.now() } }, styleAiAnswers });
+    if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
+    const last = res.iterations[res.iterations.length - 1];
+    process.stderr.write(`${GREEN}✅ voice corrected (match ${res.match}/100)${RESET}\n${res.profile}\n${DIM}sample: ${last?.sample ?? ""}${RESET}\n`);
     return;
   }
   fail(`Unknown 'brand voice' verb: ${verb}`);

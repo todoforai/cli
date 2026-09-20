@@ -159,6 +159,8 @@ export function parseCliArgs() {
       url: { type: "string" },
       "pasted-file": { type: "string" },
       "from-company": { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
+      max: { type: "string" },
       seed: { type: "string" },
       emails: { type: "string" },
       ttl: { type: "string" },
