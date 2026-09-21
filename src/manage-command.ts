@@ -52,11 +52,18 @@ Usage:
   tfa-cli project groups                           List todo groups
   tfa-cli project groups set <slug> <field=value>… Create/update a group: name description pinned archived order
   tfa-cli project groups reorder <slug>…           Set wall order
+  tfa-cli project surfaces                         List the board's card surfaces (live refs shown as cards)
+  tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [order=N]
+                                                   Show a ref on the board: a todo id, <todoId>:<alias>
+                                                   (shown artifact) or an http(s) url. group= puts it
+                                                   inside that group's card; group="" makes it standalone.
+  tfa-cli project surfaces rm <id>                 Take it off the board
 
 Examples:
   tfa-cli project set name="Q4 launch"
   tfa-cli project groups set marketing name=Marketing description="Top-of-funnel work"
   tfa-cli project groups reorder marketing sales ops
+  tfa-cli project surfaces set weekly-kpis ref=$TODOFORAI_TODO_ID:kpi title="Weekly KPIs" group=marketing
 `);
 }
 
@@ -174,6 +181,31 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       return;
     }
     fail(`Unknown 'project groups' verb: ${verb}`);
+  }
+  if (sub === "surfaces") {
+    const [verb, ...sargs] = rest;
+    if (!verb) {
+      const surfaces = await api.listProjectSurfaces(projectId);
+      if (args.json) { console.log(JSON.stringify(surfaces, null, 2)); return; }
+      for (const s of surfaces) process.stderr.write(`${s.id}  ${s.ref}  ${DIM}${[s.title, s.group && `in ${s.group}`].filter(Boolean).join("  ")}${RESET}\n`);
+      return;
+    }
+    if (verb === "set") {
+      const [id, ...fields] = sargs;
+      if (!id) fail("Usage: tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [order=N]");
+      const surface = await api.upsertProjectSurface(projectId, id, parseAssignments(fields));
+      if (args.json) { console.log(JSON.stringify(surface, null, 2)); return; }
+      process.stderr.write(`${GREEN}✅ surface ${id} shows ${surface.ref}${surface.group ? ` in ${surface.group}` : ""}${RESET}\n`);
+      return;
+    }
+    if (verb === "rm") {
+      const [id] = sargs;
+      if (!id) fail("Usage: tfa-cli project surfaces rm <id>");
+      await api.deleteProjectSurface(projectId, id);
+      process.stderr.write(`${GREEN}✅ surface ${id} removed${RESET}\n`);
+      return;
+    }
+    fail(`Unknown 'project surfaces' verb: ${verb}`);
   }
   fail(`Unknown 'project' subcommand: ${sub}`);
 }
