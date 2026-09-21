@@ -341,7 +341,7 @@ export async function voiceDeviceCommand(rest: string[], args: Record<string, an
 
 async function voiceCommand(api: ApiClient, rest: string[], args: Record<string, any>) {
   const [verb, ...vargs] = rest;
-  if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --pasted-file F|- | --max N] [--dry-run]");
+  if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --pasted-file F|- | --account <page-id> | --max N] [--dry-run]");
   const onboarding = await api.getOnboarding();
 
   if (verb === "answers") {
@@ -366,7 +366,7 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
     if (args.json) { console.log(JSON.stringify({ brand, profile, sources }, null, 2)); return; }
     process.stderr.write(`${brand.name}  ${DIM}${brand.id}${RESET}\n`);
     process.stderr.write(profile ? `\n${profile.profile}\n${DIM}match ${profile.match}/100 · source ${profile.source}${RESET}\n` : `${DIM}(no voice learned yet)${RESET}\n`);
-    for (const s of sources) process.stderr.write(`  ${s.channel}  ${DIM}${s.posts ?? "?"} posts · ${s.chars ?? "?"} chars${RESET}\n`);
+    for (const s of sources) process.stderr.write(`  ${s.channel}${s.account ? ` ${s.label} ${DIM}(${s.account})${RESET}` : ""}  ${DIM}${s.posts ?? "?"} posts · ${s.chars ?? "?"} chars${RESET}\n`);
     return;
   }
   if (verb === "collect") {
@@ -388,13 +388,16 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
       process.stderr.write(`${GREEN}✅ ${channel}: ${samples.length} reply pairs stored (${sources.length} source(s))${RESET}\n`);
       return;
     }
-    const { sources } = await api.collectVoiceSource(brand.id, channel, { url: args.url, pasted });
+    const { sources } = await api.collectVoiceSource(brand.id, channel, { url: args.url, pasted, account: args.account });
     process.stderr.write(`${GREEN}✅ ${channel} collected (${sources.length} source(s))${RESET}\n`);
     return;
   }
   if (verb === "remove") {
-    if (!vargs[0]) fail("Usage: tfa-cli brand voice remove <channel>");
-    await api.removeVoiceSource(brand.id, vargs[0]);
+    if (!vargs[0]) fail("Usage: tfa-cli brand voice remove <channel> [--account <id>]   (no --account: every source of the channel)");
+    const targets = args.account ? [{ account: args.account as string }]
+      : (await api.listVoiceSources(brand.id)).sources.filter((s: { channel: string }) => s.channel === vargs[0]);
+    if (!targets.length) fail(`${vargs[0]}: no source collected`);
+    for (const t of targets) await api.removeVoiceSource(brand.id, vargs[0], t.account);
     process.stderr.write(`${GREEN}✅ ${vargs[0]} removed${RESET}\n`);
     return;
   }
