@@ -458,7 +458,6 @@ async function main() {
       ...(args.title ? { title: args.title as string } : {}),
       ...(args.note ? { note: args.note as string } : {}),
       ...(priority ? { priority } : {}),
-      ...(args["business-context"] ? { businessContextId: args["business-context"] as string } : {}),
       ...(args.group ? { group: args.group as string } : {}),
       ...(args["group-name"] ? { groupName: args["group-name"] as string } : {}),
       ...(args["group-description"] ? { groupDescription: args["group-description"] as string } : {}),
@@ -511,7 +510,7 @@ async function main() {
     const res = await fetch(`${apiUrl}${restBasePath(apiKey)}/projects/${projectId}/recommendations/generate`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": apiKey },
-      body: JSON.stringify({ projectId, ...(args["business-context"] ? { businessContextId: args["business-context"] } : {}), ...(direction ? { direction } : {}) }),
+      body: JSON.stringify({ projectId, ...(direction ? { direction } : {}) }),
       signal: AbortSignal.timeout(30_000),
     });
     const text = await res.text();

@@ -29,7 +29,7 @@ Examples:
   tfa-cli agent list|get|update|create …        # Agents (update <agent> model=…)
   tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields
   tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one
-  tfa-cli brand list|create|select|voice …      # Brands (business contexts) + voice learning
+  tfa-cli brand [show|create|rename|voice …]    # The project's brand page + voice learning
   tfa-cli device list|rename|wallpaper …        # Paired machines
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated)
   tfa-cli status <todo-id> <STATUS>     # Update a todo's status
@@ -154,8 +154,6 @@ export function parseCliArgs() {
       card: { type: "string" },
       link: { type: "boolean", default: false },
       direction: { type: "string" },
-      "business-context": { type: "string" },
-      brand: { type: "string" },
       url: { type: "string" },
       "pasted-file": { type: "string" },
       "from-company": { type: "boolean", default: false },

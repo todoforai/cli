@@ -21,7 +21,6 @@ Fields (PUT /todos/{id}):
   star             true|false (starredAt now / 0)
   schedule         unix ms timestamp, 0 = immediate (alias: scheduledTimestamp)
   agent            agentSettingsId (alias: agentSettingsId)
-  brand            businessContextId (alias: businessContextId)
   public           true|false — refused from an agent shell (isPublic)
 
   tfa-cli todo message <todo-id|-> <message-id> <field=value>…
@@ -44,7 +43,7 @@ tfa-cli project — edit the current project
 
 Usage:
   tfa-cli project list                             Projects you can access (* = default)
-  tfa-cli project set <field=value>…               name=… description=… brand=<businessContextId>
+  tfa-cli project set <field=value>…               name=… description=…
                                                     (isPublic refused from an agent shell)
   tfa-cli project default                          Make it the project you land on at /
   tfa-cli project agent <agent>                    Default agent for new todos in this project
@@ -72,11 +71,10 @@ const TODO_ALIASES: Record<string, string> = {
   group: "groupTag",
   schedule: "scheduledTimestamp",
   agent: "agentSettingsId",
-  brand: "businessContextId",
   public: "isPublic",
 };
 
-const PROJECT_ALIASES: Record<string, string> = { brand: "businessContextId" };
+const PROJECT_ALIASES: Record<string, string> = {};
 
 function fail(msg: string): never {
   process.stderr.write(`${RED}${msg}${RESET}\n`);
@@ -214,16 +212,15 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
 
 export function printBrandHelp() {
   process.stderr.write(`
-tfa-cli brand — business contexts (brands) and the learned writing voice
+tfa-cli brand — the project's brand page and its learned writing voice
 
+The project IS the brand. --project <id> or $TODOFORAI_PROJECT_ID selects it.
 The brand page text itself is a file: read/write todoforai:business-context.
-These commands manage the contexts and the voice learned for them.
 
 Usage:
-  tfa-cli brand list                               Contexts (* = selected)
-  tfa-cli brand create <name>                      New brand (empty .md page)
-  tfa-cli brand rename <brand> <name>
-  tfa-cli brand select <brand|none>                Active brand for the account
+  tfa-cli brand [show]                             This project's brand (none = personal board)
+  tfa-cli brand create <name>                      Give the project a brand page (empty .md); the board turns business
+  tfa-cli brand rename <name>
   tfa-cli brand voice                              Learned profile + sources
   tfa-cli brand voice answers [<q>=<a>…]           Show / set the brand-voice answers (strings)
   tfa-cli brand voice collect <channel> [--url U | --pasted-file <F|-> | --max N]
@@ -239,9 +236,7 @@ Usage:
   tfa-cli brand voice correct "<what is off>"      Tell the learner what it got wrong; profile is updated
                                                    in one pass and the correction is kept for every re-learn
 
-<brand> is an id or name (unique partial works). Voice subcommands use the
-selected brand unless --brand <id|name> is given (--pasted-file - reads stdin).
-Delete / reset are UI-only.
+--pasted-file - reads stdin. Delete is UI-only.
 
 Questions the UI asks (keys for 'answers'):
   "What makes you different from competitors?"
@@ -250,53 +245,35 @@ Questions the UI asks (keys for 'answers'):
 `);
 }
 
-async function resolveBrand(api: ApiClient, query: string | undefined, selectedId?: string): Promise<any> {
-  const contexts: any[] = await api.listBusinessContexts();
-  if (!query) {
-    const sel = contexts.find((c) => c.id === selectedId);
-    if (sel) return sel;
-    if (contexts.length === 1) return contexts[0];
-    fail("No brand selected — pass --brand <id|name> or 'tfa-cli brand select'");
-  }
-  const q = query.toLowerCase();
-  const exact = contexts.find((c) => c.id === query || c.name.toLowerCase() === q);
-  if (exact) return exact;
-  const partial = contexts.filter((c) => c.id.startsWith(query) || c.name.toLowerCase().includes(q));
-  if (partial.length === 1) return partial[0];
-  fail(partial.length ? `Ambiguous brand '${query}'` : `No brand matching '${query}'`);
+function requireProject(args: Record<string, any>): string {
+  const projectId = (args.project as string) || getEnv("PROJECT_ID");
+  if (!projectId) fail("No project — pass --project <id> or set TODOFORAI_PROJECT_ID");
+  return projectId;
 }
 
 export async function brandCommand(api: ApiClient, positionals: string[], args: Record<string, any>) {
   const [, sub, ...rest] = positionals;
-  if (!sub || sub === "list") {
-    const contexts: any[] = await api.listBusinessContexts();
-    const selected = (await api.getProfile()).user?.selectedBusinessContextId;
-    if (args.json) { console.log(JSON.stringify(contexts.map((c) => ({ ...c, selected: c.id === selected })), null, 2)); return; }
-    for (const c of contexts) process.stderr.write(`${c.id === selected ? "*" : " "} ${c.name}  ${DIM}${c.id}${RESET}\n`);
+  const projectId = requireProject(args);
+  if (!sub || sub === "show") {
+    const brand = await api.getBusinessContext(projectId);
+    if (args.json) { console.log(JSON.stringify(brand, null, 2)); return; }
+    process.stderr.write(brand ? `${brand.name}  ${DIM}${brand.id}${RESET}\n` : `${DIM}(personal board — no brand)${RESET}\n`);
     return;
   }
   if (sub === "create") {
     if (!rest[0]) fail("Usage: tfa-cli brand create <name>");
-    const c = await api.createBusinessContext(rest[0]);
+    const c = await api.createBusinessContext(projectId, rest[0]);
     if (args.json) { console.log(JSON.stringify(c, null, 2)); return; }
     process.stderr.write(`${GREEN}✅ brand ${c.name} created ${DIM}${c.id}${RESET}\n`);
     return;
   }
   if (sub === "rename") {
-    if (!rest[1]) fail("Usage: tfa-cli brand rename <brand> <name>");
-    const c = await resolveBrand(api, rest[0]);
-    await api.renameBusinessContext(c.id, rest[1]);
-    process.stderr.write(`${GREEN}✅ renamed to ${rest[1]}${RESET}\n`);
+    if (!rest[0]) fail("Usage: tfa-cli brand rename <name>");
+    await api.renameBusinessContext(projectId, rest[0]);
+    process.stderr.write(`${GREEN}✅ renamed to ${rest[0]}${RESET}\n`);
     return;
   }
-  if (sub === "select") {
-    if (!rest[0]) fail("Usage: tfa-cli brand select <brand|none>");
-    const id = rest[0] === "none" ? null : (await resolveBrand(api, rest[0])).id;
-    await api.selectBusinessContext(id);
-    process.stderr.write(`${GREEN}✅ selected brand: ${id ?? "none"}${RESET}\n`);
-    return;
-  }
-  if (sub === "voice") return voiceCommand(api, rest, args);
+  if (sub === "voice") return voiceCommand(api, projectId, rest, args);
   fail(`Unknown 'brand' subcommand: ${sub}`);
 }
 
@@ -339,7 +316,7 @@ export async function voiceDeviceCommand(rest: string[], args: Record<string, an
   return false;
 }
 
-async function voiceCommand(api: ApiClient, rest: string[], args: Record<string, any>) {
+async function voiceCommand(api: ApiClient, projectId: string, rest: string[], args: Record<string, any>) {
   const [verb, ...vargs] = rest;
   if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --pasted-file F|- | --account <page-id> | --max N] [--dry-run]");
   const onboarding = await api.getOnboarding();
@@ -358,10 +335,11 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
     return;
   }
 
-  const brand = await resolveBrand(api, args.brand, (await api.getProfile()).user?.selectedBusinessContextId);
+  const brand = await api.getBusinessContext(projectId);
+  if (!brand) fail("This project has no brand — 'tfa-cli brand create <name>' first");
 
   if (!verb || verb === "show") {
-    const { sources, profile } = await api.listVoiceSources(brand.id);
+    const { sources, profile } = await api.listVoiceSources(projectId);
     if (args.json) { console.log(JSON.stringify({ brand, profile, sources }, null, 2)); return; }
     process.stderr.write(`${brand.name}  ${DIM}${brand.id}${RESET}\n`);
     process.stderr.write(profile ? `\n${profile.profile}\n${DIM}match ${profile.match}/100 · source ${profile.source}${RESET}\n` : `${DIM}(no voice learned yet)${RESET}\n`);
@@ -383,23 +361,23 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
       process.stderr.write(`${DIM}reading ${channel} on this device…${RESET}\n`);
       const { samples, note } = collectChannel(channel, Number(args.max ?? 40));
       if (!samples.length) fail(`${channel}: nothing usable came back${note ? ` (${note})` : ""}`);
-      const { sources } = await api.collectVoiceSource(brand.id, channel, { samples });
+      const { sources } = await api.collectVoiceSource(projectId, channel, { samples });
       process.stderr.write(`${GREEN}✅ ${channel}: ${samples.length} reply pairs stored (${sources.length} source(s))${RESET}\n`);
       return;
     }
-    const { sources } = await api.collectVoiceSource(brand.id, channel, { url: args.url, pasted, account: args.account });
+    const { sources } = await api.collectVoiceSource(projectId, channel, { url: args.url, pasted, account: args.account });
     process.stderr.write(`${GREEN}✅ ${channel} collected (${sources.length} source(s))${RESET}\n`);
     return;
   }
   if (verb === "remove") {
     if (!vargs[0]) fail("Usage: tfa-cli brand voice remove <channel> [--account <id>]   (no --account: every source of the channel)");
-    await api.removeVoiceSource(brand.id, vargs[0], args.account ? { account: args.account } : { all: true });
+    await api.removeVoiceSource(projectId, vargs[0], args.account ? { account: args.account } : { all: true });
     process.stderr.write(`${GREEN}✅ ${vargs[0]} removed${RESET}\n`);
     return;
   }
   if (verb === "learn") {
     process.stderr.write(`${DIM}learning voice for ${brand.name}…${RESET}\n`);
-    const res = await api.refineBrandVoice(brand.id, onboarding.styleAnswers ?? {}, args["from-company"] ? "company" : undefined);
+    const res = await api.refineBrandVoice(projectId, onboarding.styleAnswers ?? {}, args["from-company"] ? "company" : undefined);
     if (!res.profile) fail("Nothing to learn from — add answers or collect a source first");
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     process.stderr.write(`${GREEN}✅ voice learned (match ${res.match}/100, source ${res.source})${RESET}\n${res.profile}\n`);
@@ -408,9 +386,9 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
   if (verb === "correct") {
     const text = vargs.join(" ").trim();
     if (!text) fail('Usage: tfa-cli brand voice correct "<what is off>"');
-    if (!(await api.listVoiceSources(brand.id)).profile?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
+    if (!(await api.listVoiceSources(projectId)).profile?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
     process.stderr.write(`${DIM}applying correction…${RESET}\n`);
-    const res = await api.refineBrandVoice(brand.id, onboarding.styleAnswers ?? {}, undefined, text);
+    const res = await api.refineBrandVoice(projectId, onboarding.styleAnswers ?? {}, undefined, text);
     if (!res.profile) fail("The correction pass returned nothing — try rewording it");
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     const last = res.iterations[res.iterations.length - 1];
