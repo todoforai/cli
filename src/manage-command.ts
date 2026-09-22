@@ -361,8 +361,7 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
   const brand = await resolveBrand(api, args.brand, (await api.getProfile()).user?.selectedBusinessContextId);
 
   if (!verb || verb === "show") {
-    const profile = onboarding.voiceProfiles?.[brand.id];
-    const { sources } = await api.listVoiceSources(brand.id);
+    const { sources, profile } = await api.listVoiceSources(brand.id);
     if (args.json) { console.log(JSON.stringify({ brand, profile, sources }, null, 2)); return; }
     process.stderr.write(`${brand.name}  ${DIM}${brand.id}${RESET}\n`);
     process.stderr.write(profile ? `\n${profile.profile}\n${DIM}match ${profile.match}/100 · source ${profile.source}${RESET}\n` : `${DIM}(no voice learned yet)${RESET}\n`);
@@ -394,10 +393,7 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
   }
   if (verb === "remove") {
     if (!vargs[0]) fail("Usage: tfa-cli brand voice remove <channel> [--account <id>]   (no --account: every source of the channel)");
-    const targets = args.account ? [{ account: args.account as string }]
-      : (await api.listVoiceSources(brand.id)).sources.filter((s: { channel: string }) => s.channel === vargs[0]);
-    if (!targets.length) fail(`${vargs[0]}: no source collected`);
-    for (const t of targets) await api.removeVoiceSource(brand.id, vargs[0], t.account);
+    await api.removeVoiceSource(brand.id, vargs[0], args.account ? { account: args.account } : { all: true });
     process.stderr.write(`${GREEN}✅ ${vargs[0]} removed${RESET}\n`);
     return;
   }
@@ -405,11 +401,6 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
     process.stderr.write(`${DIM}learning voice for ${brand.name}…${RESET}\n`);
     const res = await api.refineBrandVoice(brand.id, onboarding.styleAnswers ?? {}, args["from-company"] ? "company" : undefined);
     if (!res.profile) fail("Nothing to learn from — add answers or collect a source first");
-    const { [brand.id]: _stale, ...styleAiAnswers } = onboarding.styleAiAnswers ?? {};
-    await api.patchOnboarding({
-      voiceProfiles: { ...(onboarding.voiceProfiles ?? {}), [brand.id]: { ...res, updatedAt: Date.now() } },
-      styleAiAnswers,
-    });
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     process.stderr.write(`${GREEN}✅ voice learned (match ${res.match}/100, source ${res.source})${RESET}\n${res.profile}\n`);
     return;
@@ -417,13 +408,10 @@ async function voiceCommand(api: ApiClient, rest: string[], args: Record<string,
   if (verb === "correct") {
     const text = vargs.join(" ").trim();
     if (!text) fail('Usage: tfa-cli brand voice correct "<what is off>"');
-    const stored = onboarding.voiceProfiles?.[brand.id];
-    if (!stored?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
+    if (!(await api.listVoiceSources(brand.id)).profile?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
     process.stderr.write(`${DIM}applying correction…${RESET}\n`);
     const res = await api.refineBrandVoice(brand.id, onboarding.styleAnswers ?? {}, undefined, text);
     if (!res.profile) fail("The correction pass returned nothing — try rewording it");
-    const { [brand.id]: _stale, ...styleAiAnswers } = onboarding.styleAiAnswers ?? {};
-    await api.patchOnboarding({ voiceProfiles: { ...(onboarding.voiceProfiles ?? {}), [brand.id]: { ...res, updatedAt: Date.now() } }, styleAiAnswers });
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     const last = res.iterations[res.iterations.length - 1];
     process.stderr.write(`${GREEN}✅ voice corrected (match ${res.match}/100)${RESET}\n${res.profile}\n${DIM}sample: ${last?.sample ?? ""}${RESET}\n`);
