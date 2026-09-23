@@ -37,6 +37,7 @@ import { listAgentsCommand } from "./list-agents";
 import { agentCommand, printAgentHelp } from "./agent-command";
 import { todoCommand, projectCommand, brandCommand, deviceCommand, printTodoHelp, printProjectHelp, printBrandHelp, printDeviceHelp, voiceDeviceCommand } from "./manage-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
+import { inboxCommand, notifyCommand, printInboxHelp, printNotifyHelp } from "./notify-command";
 import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
@@ -184,9 +185,11 @@ async function main() {
   if (positionals[0] === "project" && args.help) { printProjectHelp(); process.exit(0); }
   if (positionals[0] === "brand" && args.help) { printBrandHelp(); process.exit(0); }
   if (positionals[0] === "device" && args.help) { printDeviceHelp(); process.exit(0); }
+  if (positionals[0] === "inbox" && args.help) { printInboxHelp(); process.exit(0); }
+  if (positionals[0] === "notify" && args.help) { printNotifyHelp(); process.exit(0); }
   if ((positionals[0] === "list" || positionals[0] === "ls") && args.help) { printListTodosHelp(); process.exit(0); }
   // Subcommands with their own --help handle it themselves.
-  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device"].includes(positionals[0])) { printUsage(); process.exit(0); }
+  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device", "inbox", "notify"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
   // ── flag compatibility — validated ONCE here, so no later branch can
   // silently ignore a flag (e.g. --template returning before an --isolated
@@ -330,6 +333,8 @@ async function main() {
   if (positionals[0] === "project") { await projectCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "brand") { await brandCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "device") { await deviceCommand(api, positionals, args); return; }
+  if (positionals[0] === "inbox") { await inboxCommand(api, positionals, args); return; }
+  if (positionals[0] === "notify") { await notifyCommand(api, positionals, args); return; }
   if (positionals[0] === "delete") {
     const todoId = positionals[1];
     if (!todoId) { process.stderr.write(`${RED}Usage: tfa-cli delete <todo-id>${RESET}\n`); process.exit(2); }

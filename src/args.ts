@@ -39,6 +39,9 @@ Examples:
   tfa-cli show list|rm …              # List / take down shown files
   tfa-cli open <url> [todo-id]        # Live url preview in the chat
   tfa-cli recommend --template <id>    # Add a template as a recommendation card
+  tfa-cli inbox [messages|priority|activity] [--unread]  # Read the notification feed (the bell)
+  tfa-cli inbox seen [tab]              # Mark notifications read
+  tfa-cli notify "Title" "message" [--href /t/<id>]  # Note to YOUR user (Messages tab + phone push)
   tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> links for a project you own
   tfa-cli next [--direction "<text>"]  # Analyzer growth recommendation cards
   tfa-cli <command> help                # Details per command
@@ -126,7 +129,7 @@ const WORD_FLAGS: Record<string, string> = {
   config: "show-config",
 };
 // Subcommands that print their own help; anywhere else a second positional is data.
-const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status", "show", "open"];
+const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status", "show", "open", "inbox", "notify"];
 
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
@@ -162,6 +165,10 @@ export function parseCliArgs() {
       seed: { type: "string" },
       emails: { type: "string" },
       ttl: { type: "string" },
+      subject: { type: "string" },
+      href: { type: "string" },
+      unread: { type: "boolean", default: false },
+      limit: { type: "string" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
       "non-interactive": { type: "boolean", short: "n", default: false },

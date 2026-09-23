@@ -70,6 +70,17 @@ todoforai-cli -c                     # continue most recent todo
 todoforai-cli --resume <todo-id>     # resume specific todo
 ```
 
+### Notifications
+
+```bash
+tfa-cli inbox                           # the bell: newest across all tabs
+tfa-cli inbox messages --unread         # one tab: messages | priority | activity
+tfa-cli inbox seen                      # mark everything read
+tfa-cli notify "Deploy done" "v2 is live" --href /t/<todo-id>   # note to YOUR user (Messages tab + phone push)
+```
+
+`notify` only reaches the user the key belongs to, is shown as from the calling agent, delivers the same text once (`--subject` to control the dedupe key) and is capped at 10 new notes per day.
+
 ## IDE integration (ACP)
 
 `todoforai-cli acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com) over stdio, so any ACP-capable editor can drive your agent: prompts from the editor chat, file edits as native diffs, permission prompts inline, and shell commands running on your machine through the bridge. One ACP thread = one todo. Requires `todoforai-cli login` first; `--isolated` / `--user-id` are not supported in this mode.
