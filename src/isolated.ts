@@ -16,6 +16,8 @@ export interface MayflySession {
   child: ChildProcess;
   /** SIGTERM the bridge; idempotent. */
   stop: () => void;
+  /** True once stop() was called — distinguishes our own kill from the bridge dying. */
+  stopped: () => boolean;
 }
 
 /** Trade the API key for a short-lived token scoped to this one todo.
@@ -111,5 +113,5 @@ export async function spawnMayflyBridge(
     });
   });
 
-  return { child, stop };
+  return { child, stop, stopped: () => stopped };
 }

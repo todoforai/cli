@@ -41,6 +41,7 @@ import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
 import { runAcp } from "./acp";
+import { installSignalHandlers, onShutdown, shutdown, setActiveRun } from "./shutdown";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -151,10 +152,7 @@ async function linkToSpawningBlock(api: ApiClient, todoId: string) {
 }
 
 async function main() {
-  process.on("SIGINT", () => {
-    process.stderr.write("\nCancelled by user (Ctrl+C)\n");
-    process.exit(130);
-  });
+  installSignalHandlers();
 
   const { values: args, positionals } = parseCliArgs();
   // Three states: omitted inherits, --group "" explicitly escapes, non-empty overrides.
@@ -627,6 +625,7 @@ async function main() {
 
     if (!args["no-watch"]) {
       const ws = new FrontendWebSocket(apiUrl, apiKey);
+      setActiveRun({ ws, projectId, todoId });
       await ws.connect();
       const autoApprove = !!args["dangerously-skip-permissions"];
       let agent: any = todo.agentSettings || { id: todo.agentSettingsId };
@@ -636,7 +635,7 @@ async function main() {
       }
 
       await watchTodo(ws, todoId, projectId, {
-        json: !!args.json, autoApprove, agentSettings: agent,
+        json: !!args.json, autoApprove, agentSettings: agent, exitOnInterrupt: !!args["non-interactive"],
       });
 
       if (!args["non-interactive"]) {
@@ -687,8 +686,9 @@ async function main() {
     if (followUp) {
       cfg.addToHistory(followUp);
       await api.addMessage(projectId, followUp, agent, todoId);
+      setActiveRun({ ws, projectId, todoId });
       await linkToSpawningBlock(api, todoId);
-      await watchTodo(ws, todoId, projectId, { json: !!args.json, autoApprove, agentSettings: agent });
+      await watchTodo(ws, todoId, projectId, { json: !!args.json, autoApprove, agentSettings: agent, exitOnInterrupt: !!args["non-interactive"] });
     }
     if (!args["non-interactive"]) {
       await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, autoApprove, cfg);
@@ -722,7 +722,14 @@ async function main() {
   const mayfly = isolatedTodoId
     ? await spawnMayflyBridge(apiUrl, isolatedTodoId, realpathSync(resolve((args.path as string) || ".")), { debug: !!args.debug, apiKey })
     : null;
-  if (mayfly) process.stderr.write(`${DIM}Isolated bridge:${RESET} ${CYAN}mayfly-${isolatedTodoId}${RESET}\n`);
+  if (mayfly) {
+    process.stderr.write(`${DIM}Isolated bridge:${RESET} ${CYAN}mayfly-${isolatedTodoId}${RESET}\n`);
+    onShutdown(mayfly.stop);
+    // The todo is scoped to this bridge alone — without it the agent can only fail.
+    mayfly.child.on("exit", (code, sig) => {
+      if (!mayfly.stopped()) void shutdown(1, `${RED}Error: isolated bridge died (${sig ?? `code ${code}`}) — stopping todo${RESET}`);
+    });
+  }
 
   // ── pre-resolve agent by --agent name or --path ──
   let preMatchedAgent: any = null;
@@ -848,6 +855,9 @@ async function main() {
     agent = { ...agent, permissions: { ...perms, allow: [...(perms.allow || []), "*:*"] } };
   }
   cfg.addToHistory(content);
+  // From here on the run exists server-side: any exit must stop it (a stop for a
+  // not-yet-created pre-minted id is simply dropped by the backend).
+  if (ws && isolatedTodoId) setActiveRun({ ws, projectId, todoId: isolatedTodoId });
   let todo: any;
   try {
     todo = await api.addMessage(projectId, content, agent, isolatedTodoId, undefined, undefined, groupTag || undefined, groupName);
@@ -863,6 +873,7 @@ async function main() {
     throw e;
   }
   const actualTodoId = todo.id || randomUUID();
+  if (ws) setActiveRun({ ws, projectId, todoId: actualTodoId });
   cfgScope.setLastTodoId(actualTodoId);
 
   await linkToSpawningBlock(api, actualTodoId);
@@ -886,6 +897,7 @@ async function main() {
       json: !!args.json,
       autoApprove,
       agentSettings: agent,
+      exitOnInterrupt: !!args["non-interactive"],
     });
 
     // ── interactive follow-up ──

@@ -5,6 +5,25 @@ import { singleChar } from "./select";
 import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
 import { renderDiff } from "./diff-view";
 import { YELLOW, GREEN, RED, DIM, CYAN, RESET } from "./colors";
+import { setActiveRun, cancelActiveRun, shutdown } from "./shutdown";
+
+/** How long a dropped watch socket may stay down before we give up on the run. */
+export const RECONNECT_WINDOW_MS = 60_000;
+
+/** Reconnect + resubscribe after the socket dropped (backend restart/deploy).
+ *  Returns false if the backend stayed unreachable for `windowMs`. */
+export async function resubscribe(
+  ws: FrontendWebSocket, todoId: string, callback: (t: string, p: any) => void, windowMs = RECONNECT_WINDOW_MS,
+): Promise<boolean> {
+  const deadline = Date.now() + windowMs;
+  for (let delay = 1_000; Date.now() < deadline; delay = Math.min(delay * 2, 5_000)) {
+    await new Promise((r) => setTimeout(r, Math.min(delay, Math.max(0, deadline - Date.now()))));
+    try {
+      if (await ws.subscribe(todoId, callback, { replayStatus: true })) return true;
+    } catch {}
+  }
+  return false;
+}
 
 type DiffEntry = { originalContent: string; modifiedContent: string };
 const diffStoreByWs = new WeakMap<FrontendWebSocket, Map<string, DiffEntry>>();
@@ -53,6 +72,8 @@ export interface WatchOpts {
   interruptOnCancel?: boolean;
   suppressCancelNotice?: boolean;
   activityEvent?: { set(): void };
+  /** No follow-up prompt after this run: Ctrl+C stops the todo and exits (130) instead of returning. */
+  exitOnInterrupt?: boolean;
   /** Messages buffered during callback handoff to replay before watching. */
   replayMessages?: Array<[string, any]>;
 }
@@ -91,10 +112,7 @@ export async function watchTodo(
   process.removeAllListeners("SIGINT");
   process.on("SIGINT", () => {
     interruptCount++;
-    if (interruptCount >= 2) {
-      process.stderr.write(`\n${RED}Force exit (double Ctrl+C)${RESET}\n`);
-      process.exit(130);
-    }
+    if (opts.exitOnInterrupt || interruptCount >= 2) return void shutdown(130, "Cancelled by user (Ctrl+C)");
     process.stderr.write(`\n${YELLOW}Interrupting... (Ctrl+C again to force exit)${RESET}\n`);
     if (opts.interruptOnCancel !== false) {
       ws.sendInterrupt(projectId, todoId);
@@ -290,8 +308,20 @@ export async function watchTodo(
     }
   }
 
+  // Until a terminal status arrives, any exit (signal, lost backend) must stop this run.
+  setActiveRun({ ws, projectId, todoId });
   try {
-    const result = await ws.waitForCompletion(todoId, callback);
+    let result = await ws.waitForCompletion(todoId, callback);
+    // Socket dropped (backend restart/deploy): resume the same todo, or give up loudly.
+    while (result?.type === "socket:closed") {
+      process.stderr.write(`\n${YELLOW}Connection lost — reconnecting...${RESET}\n`);
+      if (!(await resubscribe(ws, todoId, callback))) {
+        await shutdown(1, `${RED}Error: backend unreachable for ${RECONNECT_WINDOW_MS / 1000}s — giving up on todo ${todoId}${RESET}`);
+      }
+      process.stderr.write(`${DIM}Reconnected.${RESET}\n`);
+      result = await ws.completion(todoId);
+    }
+    setActiveRun(null);
     process.stdout.write("\n");
     // Exit code tracks the LAST watched turn, so an interactive session that
     // recovers from a failed turn still exits 0.
@@ -307,6 +337,9 @@ export async function watchTodo(
     }
     return true;
   } catch (e: any) {
+    // Couldn't follow the run (e.g. subscribe failed) — don't leave it running unwatched.
+    await cancelActiveRun();
+    process.exitCode = 1;
     if (!opts.suppressCancelNotice) {
       process.stderr.write(`${YELLOW}Interrupted${RESET}\n`);
     }
