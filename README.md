@@ -74,12 +74,12 @@ todoforai-cli --resume <todo-id>     # resume specific todo
 
 ```bash
 tfa-cli inbox                           # the bell: newest across all tabs
-tfa-cli inbox messages --unread         # one tab: messages | priority | activity
+tfa-cli inbox messages --unread         # one filter: needs-you | messages | activity
 tfa-cli inbox seen                      # mark everything read
 tfa-cli notify "Deploy done" "v2 is live" --href /t/<todo-id>   # note to YOUR user (Messages tab + phone push)
 ```
 
-`notify` only reaches the user the key belongs to, is shown as from the calling agent, delivers the same text once (`--subject` to control the dedupe key) and is capped at 10 new notes per day.
+`notify` has no recipient option: it always goes to the user the key belongs to (never a teammate or other account), is shown as from the calling agent, delivers the same text once (`--subject` to control the dedupe key) and is capped at 10 new notes per day.
 
 ## IDE integration (ACP)
 
