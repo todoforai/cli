@@ -222,7 +222,7 @@ Usage:
   tfa-cli brand create <name>                      Give the project a brand page (empty .md); the board turns business
   tfa-cli brand rename <name>
   tfa-cli brand voice                              Learned profile + sources
-  tfa-cli brand voice answers [<q>=<a>…]           Show / set the brand-voice answers (strings)
+  tfa-cli brand voice answers [<q>=<a>…]           Show / set the Manual source: answers to the style questions
   tfa-cli brand voice collect <channel> [--url U | --pasted-file <F|-> | --max N]
                                                    Add a writing sample source.
                                                    On this device (signed-in CLI, reply pairs):
