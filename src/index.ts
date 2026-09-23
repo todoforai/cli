@@ -41,7 +41,7 @@ import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
 import { runAcp } from "./acp";
-import { installSignalHandlers, onShutdown, shutdown, setActiveRun } from "./shutdown";
+import { installSignalHandlers, onShutdown, shutdown, setActiveRun, trackStart, finish } from "./shutdown";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -127,7 +127,7 @@ async function interactiveLoop(
       }
       cfg.addToHistory(input);
       process.stderr.write("─".repeat(40) + "\n");
-      await api.addMessage(projectId, input, agent, todoId);
+      await appendTracked(api, ws, projectId, input, agent, todoId);
       await watchTodo(ws, todoId, projectId, {
         json, autoApprove, agentSettings: agent,
       });
@@ -135,6 +135,14 @@ async function interactiveLoop(
       break;
     }
   }
+}
+
+/** Append a message to an existing todo (restarts its run). A signal while the
+ *  request is in flight waits for it, then stops the run (see trackStart). */
+async function appendTracked(api: ApiClient, ws: FrontendWebSocket, projectId: string, text: string, agent: any, todoId: string) {
+  const sent = api.addMessage(projectId, text, agent, todoId).then(() => todoId);
+  trackStart(ws, projectId, sent);
+  await sent;
 }
 
 // ── main ─────────────────────────────────────────────────────────────
@@ -685,8 +693,7 @@ async function main() {
     const followUp = promptArg(positionals) ?? (process.stdin.isTTY ? "" : await readStdin());
     if (followUp) {
       cfg.addToHistory(followUp);
-      await api.addMessage(projectId, followUp, agent, todoId);
-      setActiveRun({ ws, projectId, todoId });
+      await appendTracked(api, ws, projectId, followUp, agent, todoId);
       await linkToSpawningBlock(api, todoId);
       await watchTodo(ws, todoId, projectId, { json: !!args.json, autoApprove, agentSettings: agent, exitOnInterrupt: !!args["non-interactive"] });
     }
@@ -855,25 +862,25 @@ async function main() {
     agent = { ...agent, permissions: { ...perms, allow: [...(perms.allow || []), "*:*"] } };
   }
   cfg.addToHistory(content);
-  // From here on the run exists server-side: any exit must stop it (a stop for a
-  // not-yet-created pre-minted id is simply dropped by the backend).
-  if (ws && isolatedTodoId) setActiveRun({ ws, projectId, todoId: isolatedTodoId });
+  // From here on the run exists server-side: any exit must stop it. A signal
+  // while the create is in flight waits for it (see trackStart).
+  const created = api.addMessage(projectId, content, agent, isolatedTodoId, undefined, undefined, groupTag || undefined, groupName);
+  if (ws) trackStart(ws, projectId, created.then((t: any) => t.id));
   let todo: any;
   try {
-    todo = await api.addMessage(projectId, content, agent, isolatedTodoId, undefined, undefined, groupTag || undefined, groupName);
+    todo = await created;
   } catch (e: any) {
     // Cached default project may belong to another account or be deleted.
     // Only clear the cache when the cache actually picked the project — an
     // env-selected (TODOFORAI_PROJECT_ID) 403 is not the cache's fault.
     if (!args.project && !envProjectId && cfgScope.data.default_project_id === projectId && /failed: 403/.test(e.message || "")) {
       cfgScope.clearDefaultProject();
-      process.stderr.write(`${RED}Not authorized for cached default project ${projectName} (${projectId}) — cleared it. Re-run to pick a project.${RESET}\n`);
-      process.exit(1);
+      // Throw, not exit: an in-progress shutdown owns the exit (finish defers to it).
+      throw new Error(`Not authorized for cached default project ${projectName} (${projectId}) — cleared it. Re-run to pick a project.`);
     }
     throw e;
   }
   const actualTodoId = todo.id || randomUUID();
-  if (ws) setActiveRun({ ws, projectId, todoId: actualTodoId });
   cfgScope.setLastTodoId(actualTodoId);
 
   await linkToSpawningBlock(api, actualTodoId);
@@ -913,14 +920,7 @@ async function main() {
 
 // Preserve any exit code set during the run (e.g. watchTodo on a non-success
 // terminal status); `process.exit(0)` would mask a failed run as success.
-// Under bun, process.exit() discards buffered pipe writes, truncating
-// `list --json | jq` at 64 KiB. end(cb) is the only flush signal that's
-// honest on both bun 1.3 and 1.4 (writableLength/needDrain report 0 while
-// data is still buffered); finish() is terminal, so closing stdout is fine.
-const finish = (code: number) => {
-  process.exitCode = code;
-  process.stdout.end(() => process.exit(code));
-};
+// finish() defers to an in-progress shutdown, which owns the exit.
 main().then(() => finish(process.exitCode ?? 0)).catch((e) => {
   process.stderr.write(`Error: ${e.message}\n`);
   finish(1);

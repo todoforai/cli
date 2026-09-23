@@ -6,8 +6,11 @@ export function fakeBackend(port = 0) {
   const frames: any[] = [];
   const sockets = new Set<WebSocket>();
   let status = "RUNNING";
+  let failing = 0, hang = false;
   const http: Server = createServer((req, res) => {
     if (req.method === "POST" && /\/api\/v1\/todos\/[^/]+\/subscribe$/.test(req.url || "")) {
+      if (hang) return; // never answers: client-side timeouts must cut it
+      if (failing > 0 && failing--) return res.writeHead(503).end();
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify({ status }));
     }
@@ -22,6 +25,9 @@ export function fakeBackend(port = 0) {
   return {
     frames,
     setStatus: (s: string) => { status = s; },
+    /** Next `n` subscribes answer 503 (backend restarting). */
+    failSubscribes: (n: number) => { failing = n; },
+    hangSubscribes: (on = true) => { hang = on; },
     broadcast: (m: any) => sockets.forEach((s) => s.send(JSON.stringify(m))),
     dropAll: () => sockets.forEach((s) => s.terminate()),
     listen: () => new Promise<string>((r) => http.listen(port, "127.0.0.1", () => r(`http://127.0.0.1:${(http.address() as any).port}`))),

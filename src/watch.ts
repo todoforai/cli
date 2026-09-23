@@ -5,24 +5,27 @@ import { singleChar } from "./select";
 import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
 import { renderDiff } from "./diff-view";
 import { YELLOW, GREEN, RED, DIM, CYAN, RESET } from "./colors";
-import { setActiveRun, cancelActiveRun, shutdown } from "./shutdown";
+import { setActiveRun, cancelActiveRun, shutdown, withTimeout } from "./shutdown";
 
 /** How long a dropped watch socket may stay down before we give up on the run. */
 export const RECONNECT_WINDOW_MS = 60_000;
 
+const DISCONNECTED = { type: "socket:closed", success: false } as const;
+
 /** Reconnect + resubscribe after the socket dropped (backend restart/deploy).
- *  Returns false if the backend stayed unreachable for `windowMs`. */
+ *  Returns false if the backend stayed unreachable for `windowMs` — a hard
+ *  deadline: each attempt (connect ≤10s + subscribe ≤15s) is cut to the time left. */
 export async function resubscribe(
   ws: FrontendWebSocket, todoId: string, callback: (t: string, p: any) => void, windowMs = RECONNECT_WINDOW_MS,
 ): Promise<boolean> {
   const deadline = Date.now() + windowMs;
-  for (let delay = 1_000; Date.now() < deadline; delay = Math.min(delay * 2, 5_000)) {
-    await new Promise((r) => setTimeout(r, Math.min(delay, Math.max(0, deadline - Date.now()))));
-    try {
-      if (await ws.subscribe(todoId, callback, { replayStatus: true })) return true;
-    } catch {}
+  for (let delay = 1_000; ; delay = Math.min(delay * 2, 5_000)) {
+    await new Promise((r) => setTimeout(r, Math.max(0, Math.min(delay, deadline - Date.now()))));
+    const left = deadline - Date.now();
+    if (left <= 0) return false;
+    const attempt = ws.subscribe(todoId, callback, { replayStatus: true }).catch(() => false);
+    if (await withTimeout(attempt, left, false)) return true;
   }
-  return false;
 }
 
 type DiffEntry = { originalContent: string; modifiedContent: string };
@@ -311,7 +314,10 @@ export async function watchTodo(
   // Until a terminal status arrives, any exit (signal, lost backend) must stop this run.
   setActiveRun({ ws, projectId, todoId });
   try {
-    let result = await ws.waitForCompletion(todoId, callback);
+    // A failed first subscribe (backend restarting: connect error, 5xx) is the
+    // same situation as a later drop — both go through the reconnect window.
+    const subscribed = await ws.subscribe(todoId, callback).catch(() => false);
+    let result: any = subscribed ? await ws.completion(todoId) : DISCONNECTED;
     // Socket dropped (backend restart/deploy): resume the same todo, or give up loudly.
     while (result?.type === "socket:closed") {
       process.stderr.write(`\n${YELLOW}Connection lost — reconnecting...${RESET}\n`);
@@ -337,7 +343,7 @@ export async function watchTodo(
     }
     return true;
   } catch (e: any) {
-    // Couldn't follow the run (e.g. subscribe failed) — don't leave it running unwatched.
+    // Couldn't follow the run — don't leave it running unwatched.
     await cancelActiveRun();
     process.exitCode = 1;
     if (!opts.suppressCancelNotice) {
