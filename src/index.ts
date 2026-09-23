@@ -319,8 +319,10 @@ async function main() {
     return;
   }
   if (positionals[0] === "todo") { await todoCommand(api, positionals, args); return; }
-  if (positionals[0] === "project") { await projectCommand(api, positionals, args); return; }
-  if (positionals[0] === "brand") { await brandCommand(api, positionals, args); return; }
+  // Same project resolution as every other command: --project, $TODOFORAI_PROJECT_ID, configured default.
+  const scopedProject = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id || undefined;
+  if (positionals[0] === "project") { await projectCommand(api, positionals, args, scopedProject); return; }
+  if (positionals[0] === "brand") { await brandCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "device") { await deviceCommand(api, positionals, args); return; }
   if (positionals[0] === "delete") {
     const todoId = positionals[1];

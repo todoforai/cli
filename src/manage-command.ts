@@ -40,7 +40,7 @@ export function printProjectHelp() {
   process.stderr.write(`
 tfa-cli project — edit the current project
 
---project <id> or $TODOFORAI_PROJECT_ID selects the project.
+--project <id>, $TODOFORAI_PROJECT_ID, or the configured default selects the project.
 
 Usage:
   tfa-cli project list                             Projects you can access (* = default)
@@ -74,6 +74,8 @@ const TODO_ALIASES: Record<string, string> = {
   agent: "agentSettingsId",
   public: "isPublic",
 };
+
+const NO_PROJECT = "No project — pass --project <id> or set TODOFORAI_PROJECT_ID";
 
 function fail(msg: string): never {
   process.stderr.write(`${RED}${msg}${RESET}\n`);
@@ -113,9 +115,8 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   process.stderr.write(`${GREEN}✅ ${todoId} updated: ${Object.keys(updates).join(", ")}${RESET}\n`);
 }
 
-export async function projectCommand(api: ApiClient, positionals: string[], args: Record<string, any>) {
+export async function projectCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId?: string) {
   const [, sub, ...rest] = positionals;
-  const projectId = (args.project as string) || getEnv("PROJECT_ID");
   if (!sub) { printProjectHelp(); process.exit(0); }
   // `list` is the only project verb that needs no selected project.
   if (sub === "list" || sub === "ls") {
@@ -127,7 +128,7 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
     }
     return;
   }
-  if (!projectId) fail("No project — pass --project <id> or set TODOFORAI_PROJECT_ID");
+  if (!projectId) fail(NO_PROJECT);
 
   if (sub === "set") {
     if (!rest.length) fail("Usage: tfa-cli project set <field=value>…");
@@ -213,7 +214,7 @@ export function printBrandHelp() {
   process.stderr.write(`
 tfa-cli brand — the project's brand page and its learned writing voice
 
-The project IS the brand. --project <id> or $TODOFORAI_PROJECT_ID selects it.
+The project IS the brand. --project <id>, $TODOFORAI_PROJECT_ID, or the configured default selects it.
 The brand page text itself is a file: read/write todoforai:business-context.
 
 Usage:
@@ -244,15 +245,9 @@ Questions the UI asks (keys for 'answers'):
 `);
 }
 
-function requireProject(args: Record<string, any>): string {
-  const projectId = (args.project as string) || getEnv("PROJECT_ID");
-  if (!projectId) fail("No project — pass --project <id> or set TODOFORAI_PROJECT_ID");
-  return projectId;
-}
-
-export async function brandCommand(api: ApiClient, positionals: string[], args: Record<string, any>) {
+export async function brandCommand(api: ApiClient, positionals: string[], args: Record<string, any>, scoped?: string) {
   const [, sub, ...rest] = positionals;
-  const projectId = requireProject(args);
+  const projectId = scoped || fail(NO_PROJECT);
   if (!sub || sub === "show") {
     const brand = await api.getBusinessContext(projectId);
     if (args.json) { console.log(JSON.stringify(brand, null, 2)); return; }
