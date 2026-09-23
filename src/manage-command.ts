@@ -319,24 +319,25 @@ export async function voiceDeviceCommand(rest: string[], args: Record<string, an
 async function voiceCommand(api: ApiClient, projectId: string, rest: string[], args: Record<string, any>) {
   const [verb, ...vargs] = rest;
   if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --pasted-file F|- | --account <page-id> | --max N] [--dry-run]");
-  const onboarding = await api.getOnboarding();
+  const brand = await api.getBusinessContext(projectId);
+  if (!brand) fail("This project has no brand — 'tfa-cli brand create <name>' first");
 
+  // Manual answers are the project's "Manual" voice source: Q → A samples, one bucket.
   if (verb === "answers") {
+    const { sources } = await api.listVoiceSources(projectId);
+    const manual = sources.find((s: any) => s.channel === "Manual");
+    const answers: Record<string, string> = Object.fromEntries((manual?.items ?? []).filter((x: any) => x?.prompt).map((x: any) => [x.prompt, x.text]));
     if (vargs.length) {
-      const given = Object.fromEntries(vargs.map((a) => { const i = a.indexOf("="); if (i < 1) fail(`Expected question=answer, got '${a}'`); return [a.slice(0, i), a.slice(i + 1)]; }));
-      const styleAnswers = { ...(onboarding.styleAnswers ?? {}), ...given };
-      await api.patchOnboarding({ styleAnswers });
+      for (const a of vargs) { const i = a.indexOf("="); if (i < 1) fail(`Expected question=answer, got '${a}'`); answers[a.slice(0, i)] = a.slice(i + 1); }
+      const samples = Object.entries(answers).filter(([, t]) => t.trim()).map(([prompt, text]) => ({ prompt, text }));
+      await api.collectVoiceSource(projectId, "Manual", { samples });
       process.stderr.write(`${GREEN}✅ ${vargs.length} answer(s) saved${RESET}\n`);
       return;
     }
-    const answers = onboarding.styleAnswers ?? {};
     if (args.json) { console.log(JSON.stringify(answers, null, 2)); return; }
     for (const [q, a] of Object.entries(answers)) process.stderr.write(`${q}\n  ${DIM}${a || "(empty)"}${RESET}\n`);
     return;
   }
-
-  const brand = await api.getBusinessContext(projectId);
-  if (!brand) fail("This project has no brand — 'tfa-cli brand create <name>' first");
 
   if (!verb || verb === "show") {
     const { sources, profile } = await api.listVoiceSources(projectId);
@@ -377,7 +378,7 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
   }
   if (verb === "learn") {
     process.stderr.write(`${DIM}learning voice for ${brand.name}…${RESET}\n`);
-    const res = await api.refineBrandVoice(projectId, onboarding.styleAnswers ?? {}, args["from-company"] ? "company" : undefined);
+    const res = await api.refineBrandVoice(projectId, args["from-company"] ? "company" : undefined);
     if (!res.profile) fail("Nothing to learn from — add answers or collect a source first");
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     process.stderr.write(`${GREEN}✅ voice learned (match ${res.match}/100, source ${res.source})${RESET}\n${res.profile}\n`);
@@ -388,7 +389,7 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
     if (!text) fail('Usage: tfa-cli brand voice correct "<what is off>"');
     if (!(await api.listVoiceSources(projectId)).profile?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
     process.stderr.write(`${DIM}applying correction…${RESET}\n`);
-    const res = await api.refineBrandVoice(projectId, onboarding.styleAnswers ?? {}, undefined, text);
+    const res = await api.refineBrandVoice(projectId, undefined, text);
     if (!res.profile) fail("The correction pass returned nothing — try rewording it");
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     const last = res.iterations[res.iterations.length - 1];
