@@ -1,4 +1,4 @@
-/** `inbox` (read the notification feed) and `notify` (agent → its own user's Messages tab). */
+/** `inbox` (read the notification feed) and `notify` (a note to your own user, or with --to to a project teammate). */
 
 import { createHash } from "crypto";
 import type { ApiClient } from "@shared/api";
@@ -26,16 +26,19 @@ Filters (same as the bell's chips):
 
 export function printNotifyHelp() {
   process.stderr.write(`
-tfa-cli notify — leave a note for YOUR user (their Messages tab + phone push)
+tfa-cli notify — leave a note in someone's Messages inbox (+ phone push)
 
 Usage:
   tfa-cli notify "Title" "message" [--href /t/<todo-id>] [--subject <key>] [--json]
+  tfa-cli notify --to <email> "Title" "message" [--project <id>]
   echo "message" | tfa-cli notify "Title"
 
-Recipient: ALWAYS the user this key belongs to (the person you work for). There is no --to:
-it cannot message a teammate, a customer or any other account. Shown as from your agent.
+Recipient: your own user by default. --to <email> reaches a TEAMMATE: someone who is a member
+of the current project (--project, $TODOFORAI_PROJECT_ID or your default), shown as from you.
+Anyone else is refused. List them with: tfa-cli project members
 --subject dedupes: the same subject is delivered once (default: hash of title+message,
-so a retry never double-notifies). --href must be an in-app path. Max 10 new notes/day.
+so a retry never double-notifies). --href must be an in-app path.
+Limits: 10 notes/day to yourself, 20/day to teammates.
 `);
 }
 
@@ -73,24 +76,33 @@ export async function inboxCommand(api: ApiClient, positionals: string[], args: 
   }
 }
 
-/** Flags that read as "send to someone": unknown flags fall through to positionals, which would
- *  silently deliver `--to anna@x.com "Hi"` to YOURSELF titled "anna@x.com" and report success. */
-const RECIPIENT_FLAGS = ["--to", "--email", "--user", "--recipient", "--cc"];
+/** Recipient spellings other than --to: unknown flags fall through to positionals, which would
+ *  silently deliver `--email anna@x.com "Hi"` to YOURSELF titled "anna@x.com". */
+const OTHER_RECIPIENT_FLAGS = ["--email", "--user", "--recipient", "--cc"];
 
-export async function notifyCommand(api: ApiClient, positionals: string[], args: Record<string, any>) {
-  const argv = process.argv.slice(2);
-  const bad = argv.find((a) => RECIPIENT_FLAGS.some((f) => a === f || a.startsWith(`${f}=`)));
+export async function notifyCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId?: string) {
+  const bad = process.argv.slice(2).find((a) => OTHER_RECIPIENT_FLAGS.some((f) => a === f || a.startsWith(`${f}=`)));
   if (bad) {
-    process.stderr.write(`${RED}notify has no recipient option (${bad.split("=")[0]}): it only reaches the user this key belongs to — your own user. Messaging other people is not supported.${RESET}\n`);
+    process.stderr.write(`${RED}Unknown option ${bad.split("=")[0]}: use --to <email> for a project teammate${RESET}\n`);
+    process.exit(2);
+  }
+  const to = args.to === undefined ? undefined : String(args.to).trim();
+  if (to === "") {
+    process.stderr.write(`${RED}--to is empty: pass a teammate's email, or drop --to to notify your own user${RESET}\n`);
+    process.exit(2);
+  }
+  if (to && !projectId) {
+    process.stderr.write(`${RED}--to needs a project: pass --project <id> (the recipient must be a member of it)${RESET}\n`);
     process.exit(2);
   }
   const [, title, ...rest] = positionals;
   const message = rest.join(" ") || (process.stdin.isTTY ? "" : (await readStdin()).trim());
   if (!title || !message) { printNotifyHelp(); process.exit(2); }
   const subject = (args.subject as string) || createHash("sha256").update(`${title}\n${message}`).digest("hex").slice(0, 16);
-  const row = await api.sendFeedMessage({ subject, title, message, ...(args.href ? { href: String(args.href) } : {}) }) as FeedEvent & { created: boolean };
+  const msg = { subject, title, message, ...(args.href ? { href: String(args.href) } : {}) };
+  const row = await (to ? api.sendMemberMessage({ ...msg, projectId: projectId!, to }) : api.sendFeedMessage(msg)) as FeedEvent & { created: boolean };
   if (args.json) { console.log(JSON.stringify(row)); return; }
   process.stderr.write(row.created !== false
-    ? `${GREEN}✅ Delivered to your own user's Messages inbox (not anyone else)${RESET} ${DIM}(subject ${subject})${RESET}\n`
+    ? `${GREEN}✅ Delivered to ${to ?? "your own user"}'s Messages inbox${RESET} ${DIM}(subject ${subject})${RESET}\n`
     : `${DIM}Already sent (subject ${subject}) — nothing new delivered${RESET}\n`);
 }

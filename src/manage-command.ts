@@ -44,6 +44,7 @@ tfa-cli project — edit the current project
 
 Usage:
   tfa-cli project list                             Projects you can access (* = default)
+  tfa-cli project members                          Who is on it (notify --to <email> reaches them)
   tfa-cli project set <field=value>…               name=… description=…
                                                     (isPublic refused from an agent shell)
   tfa-cli project default                          Make it the project you land on at /
@@ -130,6 +131,12 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
   }
   if (!projectId) fail(NO_PROJECT);
 
+  if (sub === "members") {
+    const members: { id: string; name?: string; email?: string }[] = await api.getProjectMembers(projectId);
+    if (args.json) { console.log(JSON.stringify(members, null, 2)); return; }
+    for (const m of members) process.stderr.write(`  ${m.name ?? ""}  ${m.email ?? ""}  ${DIM}${m.id}${RESET}\n`);
+    return;
+  }
   if (sub === "set") {
     if (!rest.length) fail("Usage: tfa-cli project set <field=value>…");
     const updates = parseAssignments(rest);

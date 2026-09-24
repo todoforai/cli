@@ -334,7 +334,7 @@ async function main() {
   if (positionals[0] === "brand") { await brandCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "device") { await deviceCommand(api, positionals, args); return; }
   if (positionals[0] === "inbox") { await inboxCommand(api, positionals, args); return; }
-  if (positionals[0] === "notify") { await notifyCommand(api, positionals, args); return; }
+  if (positionals[0] === "notify") { await notifyCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "delete") {
     const todoId = positionals[1];
     if (!todoId) { process.stderr.write(`${RED}Usage: tfa-cli delete <todo-id>${RESET}\n`); process.exit(2); }

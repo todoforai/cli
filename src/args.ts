@@ -41,7 +41,7 @@ Examples:
   tfa-cli recommend --template <id>    # Add a template as a recommendation card
   tfa-cli inbox [needs-you|messages|activity] [--unread]  # Read the notification feed (the bell)
   tfa-cli inbox seen [tab]              # Mark notifications read
-  tfa-cli notify "Title" "message" [--href /t/<id>]  # Note to YOUR OWN user only (Messages tab + phone push); no --to
+  tfa-cli notify [--to <email>] "Title" "message" [--href /t/<id>]  # Note to your own user, or --to a project member (Messages tab + phone push)
   tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> links for a project you own
   tfa-cli next [--direction "<text>"]  # Analyzer growth recommendation cards
   tfa-cli <command> help                # Details per command
@@ -167,6 +167,7 @@ export function parseCliArgs() {
       ttl: { type: "string" },
       subject: { type: "string" },
       href: { type: "string" },
+      to: { type: "string" },
       unread: { type: "boolean", default: false },
       limit: { type: "string" },
       resume: { type: "string", short: "r" },
