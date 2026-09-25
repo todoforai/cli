@@ -230,12 +230,12 @@ Usage:
   tfa-cli brand rename <name>
   tfa-cli brand voice                              Learned profile + sources
   tfa-cli brand voice answers [<q>=<a>…]           Show / set the Manual source: answers to the style questions
-  tfa-cli brand voice collect <channel> [--url U | --pasted-file <F|-> | --max N]
+  tfa-cli brand voice collect <channel> [--url U | --max N]
                                                    Add a writing sample source.
                                                    On this device (signed-in CLI, reply pairs):
                                                      Gmail (zele)  Outlook (outlook-api)  Chat (tfa-memory)
-                                                   Server-side (--url or paste):
-                                                     X LinkedIn Facebook Instagram Slack Teams
+                                                   Server-side (--url):
+                                                     X LinkedIn Facebook Instagram
                                                    --dry-run  print the samples as JSONL, store nothing
   tfa-cli brand voice check [<channel>|--all]      Can this device read the channel? tool, login, sample count
   tfa-cli brand voice remove <channel>
@@ -243,7 +243,6 @@ Usage:
   tfa-cli brand voice correct "<what is off>"      Tell the learner what it got wrong; profile is updated
                                                    in one pass and the correction is kept for every re-learn
 
---pasted-file - reads stdin. Delete is UI-only.
 
 Questions the UI asks (keys for 'answers'):
   "What makes you different from competitors?"
@@ -319,7 +318,7 @@ export async function voiceDeviceCommand(rest: string[], args: Record<string, an
 
 async function voiceCommand(api: ApiClient, projectId: string, rest: string[], args: Record<string, any>) {
   const [verb, ...vargs] = rest;
-  if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --pasted-file F|- | --account <page-id> | --max N] [--dry-run]");
+  if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --account <page-id> | --max N] [--dry-run]");
   // The voice belongs to the project, not the brand page: no brand is needed to teach or learn it.
 
   // Manual answers are the project's "Manual" voice source: Q → A samples, one bucket.
@@ -346,13 +345,8 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
   }
   if (verb === "collect") {
     const channel = vargs[0];
-    let pasted: string | undefined;
-    if (args["pasted-file"]) {
-      const { readFileSync } = await import("node:fs");
-      pasted = readFileSync(args["pasted-file"] === "-" ? 0 : args["pasted-file"], "utf8");
-    }
     // Signed-in CLI on this device beats a crawl: full history, real reply pairs.
-    const onDevice = !pasted && !args.url && ADAPTERS[channel];
+    const onDevice = !args.url && ADAPTERS[channel];
     if (onDevice) {
       const reason = checkChannel(channel);
       if (reason) fail(`${channel}: ${reason}`);
@@ -363,7 +357,7 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
       process.stderr.write(`${GREEN}✅ ${channel}: ${samples.length} reply pairs stored (${sources.length} source(s))${RESET}\n`);
       return;
     }
-    const { sources } = await api.collectVoiceSource(projectId, channel, { url: args.url, pasted, account: args.account });
+    const { sources } = await api.collectVoiceSource(projectId, channel, { url: args.url, account: args.account });
     process.stderr.write(`${GREEN}✅ ${channel} collected (${sources.length} source(s))${RESET}\n`);
     return;
   }

@@ -158,7 +158,6 @@ export function parseCliArgs() {
       link: { type: "boolean", default: false },
       direction: { type: "string" },
       url: { type: "string" },
-      "pasted-file": { type: "string" },
       account: { type: "string" },
       "from-company": { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },

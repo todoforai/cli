@@ -161,7 +161,7 @@ export const DEVICE_CHANNELS = Object.keys(ADAPTERS);
 /** Is this channel readable on this device right now? null = yes, else the reason. */
 export function checkChannel(channel: string): string | null {
   const a = ADAPTERS[channel];
-  return a ? a.check() : `${channel} is not read on the device (server-side: pass --url, or paste)`;
+  return a ? a.check() : `${channel} is not read on the device (server-side: pass --url)`;
 }
 
 /** Read the channel's samples; rows that do not carry a reply are dropped, never synthesised. */
