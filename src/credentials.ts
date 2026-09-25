@@ -6,4 +6,4 @@
  * sites stable.
  */
 
-export { readCredential, writeCredential, refreshDeviceToken } from "@shared/credentials";
+export { readCredential, writeCredential, refreshDeviceToken, runActorToken } from "@shared/credentials";

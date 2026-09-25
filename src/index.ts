@@ -25,7 +25,7 @@ import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, printSho
 import { readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
-import { readCredential } from "./credentials";
+import { readCredential, runActorToken } from "./credentials";
 import { runDeviceLogin, DeviceLoginError } from "./device-login";
 import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
@@ -273,7 +273,10 @@ async function main() {
   // every shell child, and the bridge stores one as apiToken) only authenticate
   // on the /dst/v1 mount — ApiClient/restBasePath route them there, so they work
   // like any other token here (headless sandboxes have nothing else).
+  // A run on a device shared with you carries YOUR token in env — it beats the
+  // machine owner's stored credentials.
   let apiKey = (args["api-key"] as string)
+    || runActorToken()
     || readCredential(apiUrl)
     || getEnv("API_TOKEN")
     || "";

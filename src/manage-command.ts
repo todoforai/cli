@@ -406,9 +406,13 @@ Usage:
   tfa-cli device list
   tfa-cli device rename <device> <name>        name: [a-zA-Z0-9][a-zA-Z0-9_]*, ≤64
   tfa-cli device wallpaper <device> auto|off   desktop-wallpaper capture (off deletes stored images)
+  tfa-cli device access <device>               who you shared the device with
+  tfa-cli device share <device> <email>        let a teammate use it (their runs act as THEM)
+  tfa-cli device unshare <device> <email>
 
 <device> is an id, name or hostname (unique partial works).
-exec / reboot / update / unpair / workspace paths are UI-only from an agent shell.
+Devices shared with you are marked "shared"; only the owner can rename/share them.
+exec / reboot / update / unpair / workspace paths / share are UI-only from an agent shell.
 `);
 }
 
@@ -417,7 +421,11 @@ export async function deviceCommand(api: ApiClient, positionals: string[], args:
   const devices: any[] = await api.listDevices();
   if (!sub || sub === "list") {
     if (args.json) { console.log(JSON.stringify(devices, null, 2)); return; }
-    for (const d of devices) process.stderr.write(`${d.status === "ONLINE" ? GREEN + "●" : DIM + "○"}${RESET} ${d.name}  ${DIM}${d.deviceType} ${d.metadata?.identity?.hostname ?? ""} ${d.id}${RESET}\n`);
+    // Only the owner's view carries accessIds, so its absence marks a device lent to us.
+    for (const d of devices) {
+      const sharing = !d.accessIds ? " shared with you" : d.accessIds.length ? ` shared ×${d.accessIds.length}` : "";
+      process.stderr.write(`${d.status === "ONLINE" ? GREEN + "●" : DIM + "○"}${RESET} ${d.name}  ${DIM}${d.deviceType} ${d.metadata?.identity?.hostname ?? ""} ${d.id}${sharing}${RESET}\n`);
+    }
     return;
   }
   if (!query) fail(`Usage: tfa-cli device ${sub} <device> …`);
@@ -432,6 +440,15 @@ export async function deviceCommand(api: ApiClient, positionals: string[], args:
     if (!value) fail("Usage: tfa-cli device rename <device> <name>");
     await api.renameDevice(found.id, value);
     process.stderr.write(`${GREEN}✅ ${found.name} → ${value}${RESET}\n`);
+    return;
+  }
+  if (sub === "access" || sub === "share" || sub === "unshare") {
+    if (sub !== "access" && !value) fail(`Usage: tfa-cli device ${sub} <device> <email>`);
+    const list = sub === "access" ? await api.getDeviceAccess(found.id)
+      : sub === "share" ? await api.shareDevice(found.id, value) : await api.unshareDevice(found.id, value);
+    if (args.json) { console.log(JSON.stringify(list, null, 2)); return; }
+    if (sub !== "access") process.stderr.write(`${GREEN}✅ ${found.name} ${sub === "share" ? "shared with" : "no longer shared with"} ${value}${RESET}\n`);
+    process.stderr.write(list.length ? list.map((u) => `  ${u.email}${u.name ? ` ${DIM}(${u.name})${RESET}` : ""}\n`).join("") : `  ${DIM}not shared${RESET}\n`);
     return;
   }
   if (sub === "wallpaper") {
