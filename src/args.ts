@@ -84,15 +84,27 @@ Usage:
   tfa-cli show <file|-> [todo-id]     Render a file by mimetype (- reads stdin)
                                       [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
                                       --link: compact download chip instead of inline render
-                                      Prints "<todoId>:<alias|id>  <public url>". Re-showing with the same
-                                      --alias updates the block in place; old versions stay at /<id>/<version>
-  tfa-cli show rm <ref|alias>         Take it down (block, url, every version)
+                                      Prints "<todoId>:<alias|id>". Private: visible to whoever can read the todo.
+                                      Re-showing with the same --alias updates the block in place (new version)
+                                      --alias <todoId>:<alias> updates that todo's block instead,
+                                      so a later chat can revise an artifact made elsewhere
+  tfa-cli show share <ref|alias>      Make it public; prints its link (serves the latest version)
+  tfa-cli show unshare <ref|alias>    Make it private again (the link stops working)
+  tfa-cli show rm <ref|alias>         Take it down (block, link, every version)
   tfa-cli show list [todo-id]         List show blocks (ref, title, mime/url, card)
                                       [--project <id>] [--card <name>] [--json]
                                       no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
   tfa-cli open <url> [todo-id]        Live http(s) url as a preview  [--title T] [--alias A] [--json]
 
 todo-id defaults to $TODOFORAI_TODO_ID (agent shell) or the last todo this CLI touched.
+
+When to use what:
+  read once, move on             → plain chat reply
+  interactive, this chat only    → html_snippet (can exec/connect/chat back)
+  keep / revise later            → show <file> --alias <name>  (versioned, private)
+  someone outside needs it       → show share <alias>  (public link, revocable)
+  a live web page                → open <url>
+  a format the user asked for    → show the file (pptx, docx, xlsx, pdf…)
 `);
 }
 

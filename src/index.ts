@@ -41,6 +41,10 @@ import { inboxCommand, notifyCommand, printInboxHelp, printNotifyHelp } from "./
 import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
+
+/** `--alias <todoId>:<alias>` names its own todo, so no current todo is needed. */
+const aliasTodoId = (alias: unknown): string | undefined =>
+  typeof alias === "string" && alias.includes(":") ? alias.slice(0, alias.indexOf(":")) : undefined;
 import { runAcp } from "./acp";
 import { installSignalHandlers, onShutdown, shutdown, setActiveRun, trackStart, finish } from "./shutdown";
 
@@ -381,23 +385,36 @@ async function main() {
       const kind = it.url ? `url ${it.url}` : (it.mime || "");
       const card = it.cardRef ? ` card=${it.cardRef}` : "";
       const link = it.display === "link" ? " link" : "";
-      console.log(`${it.ref}  ${it.title || it.filename || ""}  ${kind}${card}${link}`);
+      const shared = it.shareUrl ? `  ${it.shareUrl}` : "";
+      console.log(`${it.ref}  ${it.title || it.filename || ""}  ${kind}${card}${link}${shared}`);
     }
     return;
   }
 
-  // show rm <ref|alias>: take a shown file down — block, public url, every
-  // version. `<todoId>:<alias>` as printed by `show`, or a bare alias in the
-  // current todo.
-  if (positionals[0] === "show" && positionals[1] === "rm") {
+  // show rm|share|unshare <ref|alias>: `<todoId>:<alias>` as printed by `show`,
+  // or a bare alias in the current todo.
+  //   rm       take it down — block, link, every version
+  //   share    make it public (prints the url)
+  //   unshare  make it private again
+  const showSub = positionals[1];
+  if (positionals[0] === "show" && (showSub === "rm" || showSub === "share" || showSub === "unshare")) {
     const arg = positionals[2];
-    if (!arg) { process.stderr.write(`${RED}Usage: tfa-cli show rm <ref|alias>${RESET}\n`); process.exit(2); }
+    if (!arg) { process.stderr.write(`${RED}Usage: tfa-cli show ${showSub} <ref|alias>${RESET}\n`); process.exit(2); }
     const sep = arg.indexOf(":");
     const todoId = sep >= 0 ? arg.slice(0, sep) : (getEnv("TODO_ID") || cfgScope.data.last_todo_id);
     const key = sep >= 0 ? arg.slice(sep + 1) : arg;
-    if (!todoId || !key) { process.stderr.write(`${RED}show rm: need <todoId>:<alias> (no current todo)${RESET}\n`); process.exit(2); }
-    await api.removeShow(todoId, key);
-    process.stderr.write(`${GREEN}✅ removed ${todoId}:${key}${RESET}\n`);
+    if (!todoId || !key) { process.stderr.write(`${RED}show ${showSub}: need <todoId>:<alias> (no current todo)${RESET}\n`); process.exit(2); }
+    if (showSub === "rm") {
+      await api.removeShow(todoId, key);
+      process.stderr.write(`${GREEN}✅ removed ${todoId}:${key}${RESET}\n`);
+    } else if (showSub === "share") {
+      const res = await api.shareShow(todoId, key);
+      if (args.json) console.log(JSON.stringify(res, null, 2));
+      else console.log(res.url);
+    } else {
+      await api.unshareShow(todoId, key);
+      process.stderr.write(`${GREEN}✅ ${todoId}:${key} is private again${RESET}\n`);
+    }
     return;
   }
 
@@ -405,7 +422,7 @@ async function main() {
     const [, filePath, todoArg] = positionals;
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
-    const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    const todoId = todoArg || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
     if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
@@ -433,13 +450,13 @@ async function main() {
       display: args.link ? "link" : undefined,
     });
     if (args.json) console.log(JSON.stringify(res, null, 2));
-    else console.log(res.url ? `${res.ref}  ${res.url}` : res.ref);
+    else console.log(res.shareUrl ? `${res.ref}  ${res.shareUrl}` : res.ref);
     return;
   }
 
   if (positionals[0] === "open") {
     const [, url, todoArg] = positionals;
-    const todoId = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    const todoId = todoArg || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
     if (!url || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli open <url> [todo-id]${RESET}\n`); process.exit(2); }
     const res = await api.showUrl(todoId, url, { title: args.title, alias: args.alias });
     if (args.json) console.log(JSON.stringify(res, null, 2));
