@@ -1,5 +1,11 @@
 {
   "name": "@todoforai/cli",
+  "description": "TODOforAI CLI — create and manage tasks with tfa-cli.",
+  "homepage": "https://todofor.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/todoforai/cli.git"
+  },
   "version": "0.1.29",
   "type": "module",
   "bin": {
