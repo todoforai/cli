@@ -45,6 +45,7 @@ Examples:
   tfa-cli notify [--to <email>] "Title" "message" [--href /t/<id>]  # Note to your own user, or --to a project member (Messages tab + phone push)
   tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> links for a project you own
   tfa-cli next [--direction "<text>"]  # Analyzer growth recommendation cards
+  tfa-cli import [detect|claude|codex] [--dry-run]  # Import Claude Code / Codex sessions as todos
   tfa-cli <command> help                # Details per command
 
 Options:
@@ -142,7 +143,7 @@ const WORD_FLAGS: Record<string, string> = {
   config: "show-config",
 };
 // Subcommands that print their own help; anywhere else a second positional is data.
-const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status", "show", "open", "inbox", "notify"];
+const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status", "show", "open", "inbox", "notify", "import"];
 
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
