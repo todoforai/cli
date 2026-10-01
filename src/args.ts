@@ -33,6 +33,7 @@ Examples:
   tfa-cli device list|rename|wallpaper …        # Paired machines
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated)
   tfa-cli status <todo-id> <STATUS>     # Update a todo's status
+  tfa-cli update                        # Update tfa-cli itself (also auto-updates in background; NO_UPDATE_NOTIFIER=1 disables)
   tfa-cli delete <todo-id>              # Permanently delete a todo
   tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
   tfa-cli show <file|-> [todo-id]     # Render a local file (image/pdf/html…) in the chat; - = stdin
