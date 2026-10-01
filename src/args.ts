@@ -45,7 +45,7 @@ Examples:
   tfa-cli notify [--to <email>] "Title" "message" [--href /t/<id>]  # Note to your own user, or --to a project member (Messages tab + phone push)
   tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]  # Mint /claim/<token> links for a project you own
   tfa-cli next [--direction "<text>"]  # Analyzer growth recommendation cards
-  tfa-cli import [detect|claude|codex] [--dry-run]  # Import Claude Code / Codex sessions as todos
+  tfa-cli import [claude|codex|<file>...] [--dry-run]  # Import Claude Code / Codex sessions as todos
   tfa-cli <command> help                # Details per command
 
 Options:
@@ -184,6 +184,7 @@ export function parseCliArgs() {
       to: { type: "string" },
       unread: { type: "boolean", default: false },
       limit: { type: "string" },
+      days: { type: "string" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
       "non-interactive": { type: "boolean", short: "n", default: false },
