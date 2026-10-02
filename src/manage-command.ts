@@ -6,7 +6,7 @@ import { getEnv } from "./args";
 import { getDisplayName, getItemId } from "./select";
 import { DIM, GREEN, RED, RESET } from "./colors";
 import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice-collect";
-import { MANUAL_CHANNEL, manualAnswersOf, manualSamples } from "@shared/fbe";
+import { MANUAL_CHANNEL, manualAnswersOf, manualSamples, voiceNamesOf } from "@shared/fbe";
 
 export function printTodoHelp() {
   process.stderr.write(`
@@ -340,7 +340,8 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
     if (args.json) { console.log(JSON.stringify({ brand, profile, sources }, null, 2)); return; }
     if (brand) process.stderr.write(`${brand.name}  ${DIM}${brand.id}${RESET}\n`);
     process.stderr.write(profile ? `\n${profile.profile}\n${DIM}match ${profile.match}/100 · source ${profile.source}${RESET}\n` : `${DIM}(no voice learned yet)${RESET}\n`);
-    for (const s of sources) process.stderr.write(`  ${s.channel}${s.account ? ` ${s.label} ${DIM}(${s.account})${RESET}` : ""}  ${DIM}${s.posts ?? "?"} posts · ${s.chars ?? "?"} chars${RESET}\n`);
+    const names = voiceNamesOf(sources);
+    for (const [i, s] of sources.entries()) process.stderr.write(`  ${names[i]}${s.account ? ` ${DIM}(${s.account})${RESET}` : ""}  ${DIM}${s.posts ?? "?"} posts · ${s.chars ?? "?"} chars${RESET}\n`);
     return;
   }
   if (verb === "collect") {
