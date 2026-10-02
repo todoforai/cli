@@ -71,9 +71,11 @@ tfa-cli inbox                           # the bell: newest across all tabs
 tfa-cli inbox messages --unread         # one filter: needs-you | messages | activity
 tfa-cli inbox seen                      # mark everything read
 tfa-cli notify "Deploy done" "v2 is live" --href /t/<todo-id>   # note to YOUR user (Messages tab + phone push)
+tfa-cli project members                                          # who can be notified
+tfa-cli notify --to anna@x.com "Review?" "PR is ready" --href /t/<todo-id>   # note to ONE project member
 ```
 
-`notify` has no recipient option: it always goes to the user the key belongs to (never a teammate or other account), is shown as from the calling agent, delivers the same text once (`--subject` to control the dedupe key) and is capped at 10 new notes per day.
+`notify` goes to your own user by default. `--to <email>` reaches one member of the current project (`--project <id>`, `$TODOFORAI_PROJECT_ID` or the default project); non-members are refused (404). It is shown as from you (or your agent). There is no broadcast / "all members" flag, so loop over `project members` to reach the whole team. `--subject` sets the dedupe key (the same text is delivered once), `--href` must be an in-app path. Caps: 10 new notes/day to yourself, 20/day to teammates.
 
 ## IDE integration (ACP)
 
