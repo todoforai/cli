@@ -40,6 +40,7 @@ import { todoCommand, projectCommand, brandCommand, deviceCommand, printTodoHelp
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { inboxCommand, notifyCommand, printInboxHelp, printNotifyHelp } from "./notify-command";
 import { importCommand, printImportHelp } from "./import-command";
+import { memoryCommand, printMemoryHelp } from "./memory-command";
 import { randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
@@ -198,11 +199,12 @@ async function main() {
   if (positionals[0] === "inbox" && args.help) { printInboxHelp(); process.exit(0); }
   if (positionals[0] === "notify" && args.help) { printNotifyHelp(); process.exit(0); }
   if (positionals[0] === "import" && args.help) { printImportHelp(); process.exit(0); }
+  if (positionals[0] === "memory" && args.help) { printMemoryHelp(); process.exit(0); }
   // `import --dry-run` only reads local session files: no backend, no login prompt.
   if (positionals[0] === "import" && args["dry-run"]) { await importCommand(null, positionals, args); return; }
   if ((positionals[0] === "list" || positionals[0] === "ls") && args.help) { printListTodosHelp(); process.exit(0); }
   // Subcommands with their own --help handle it themselves.
-  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device", "inbox", "notify", "import"].includes(positionals[0])) { printUsage(); process.exit(0); }
+  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device", "inbox", "notify", "import", "memory"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
   // ── flag compatibility — validated ONCE here, so no later branch can
   // silently ignore a flag (e.g. --template returning before an --isolated
@@ -351,6 +353,7 @@ async function main() {
   if (positionals[0] === "device") { await deviceCommand(api, positionals, args); return; }
   if (positionals[0] === "inbox") { await inboxCommand(api, positionals, args); return; }
   if (positionals[0] === "notify") { await notifyCommand(api, positionals, args, scopedProject); return; }
+  if (positionals[0] === "memory") { await memoryCommand(apiUrl, apiKey, positionals, scopedProject); return; }
   if (positionals[0] === "import") { await importCommand(api, positionals, args, scopedProject, cfgScope.data.default_agent_settings?.id); return; }
   if (positionals[0] === "delete") {
     const todoId = positionals[1];
