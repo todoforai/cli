@@ -27,6 +27,9 @@ Fields map directly to agent settings; values are parsed as JSON when possible
   systemMessage   freeform prompt text (alias: sysmsg)
   temperature     number, e.g. 0.7
   thinkingLevel   low | medium | high | xhigh | max
+  refusalFallbackModel
+                  model to continue with when 'model' refuses on safety grounds
+                  (announced by a toast each time); "" disables
   name            agent display name
 
 Examples:
