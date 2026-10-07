@@ -19,7 +19,7 @@ try {
   if (process.argv[2] !== "update") backgroundUpdate(ownPkg!);
 } catch {}
 import { ApiClient, restBasePath, FrontendWebSocket, type RegistrySpec } from "@shared/api";
-import { qualifiedModelIds, getMimeTypeFromFilename } from "@shared/fbe";
+import { qualifiedModelIds, getMimeTypeFromFilename, truncatedImageReason } from "@shared/fbe";
 import { normalizeApiUrl } from "@shared/credentials";
 
 import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, printShowHelp, parseCliArgs } from "./args";
@@ -436,27 +436,40 @@ async function main() {
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
     const todoId = todoArg || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link]${RESET}\n`); process.exit(2); }
+    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--force]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
     // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
-    let blob: Blob, name: string;
+    let bytes: Buffer, name: string, mime: string | undefined;
     if (filePath === "-") {
       const chunks: Buffer[] = [];
       for await (const c of process.stdin) chunks.push(c as Buffer);
-      blob = new Blob([Buffer.concat(chunks)]);
-      if (blob.size === 0) { process.stderr.write(`${RED}No data on stdin${RESET}\n`); process.exit(1); }
+      bytes = Buffer.concat(chunks);
+      if (bytes.length === 0) { process.stderr.write(`${RED}No data on stdin${RESET}\n`); process.exit(1); }
       // --title is presentation metadata; it must not become the stored filename
       // (it would also silently drive mime detection). Use --mime for the type.
       name = "stdin";
     } else {
       const abs = resolve(filePath);
       if (!existsSync(abs)) { process.stderr.write(`${RED}File not found: ${filePath}${RESET}\n`); process.exit(1); }
+      bytes = readFileSync(abs);
       // Bun.file() typed the blob from its extension; keep that so the multipart part
       // carries a mimetype and the server renders by it (--mime still overrides).
-      blob = new Blob([readFileSync(abs)], { type: getMimeTypeFromFilename(abs) || undefined });
+      mime = getMimeTypeFromFilename(abs) || undefined;
       name = path.basename(filePath);
     }
+    // A cut-off image (head -c, interrupted download) still passes `file` and
+    // dimension probes; the browser renders a strip and blank below. Refuse it
+    // so the producer gets fixed instead of the viewer getting blamed.
+    const truncated = truncatedImageReason(bytes);
+    if (truncated) {
+      if (!args.force) {
+        process.stderr.write(`${RED}${name} looks truncated: ${truncated} (${bytes.length} bytes). Re-export it, or pass --force to show it anyway.${RESET}\n`);
+        process.exit(1);
+      }
+      process.stderr.write(`${YELLOW}⚠ ${name} looks truncated: ${truncated} — showing anyway (--force)${RESET}\n`);
+    }
+    const blob = new Blob([bytes], { type: mime });
 
     const res = await api.showFile(todoId, blob, name, {
       title: args.title, alias: args.alias, mime: args.mime, card: args.card as string | undefined,

@@ -84,8 +84,9 @@ tfa-cli show — put a file or url into the chat
 
 Usage:
   tfa-cli show <file|-> [todo-id]     Render a file by mimetype (- reads stdin)
-                                      [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--json]
+                                      [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--force] [--json]
                                       --link: compact download chip instead of inline render
+                                      Refuses a likely-truncated image (JPEG/PNG cut before the end marker, WebP shorter than its RIFF size); --force shows it anyway
                                       Prints "<todoId>:<alias|id>". Private: visible to whoever can read the todo.
                                       Re-showing with the same --alias updates the block in place (new version)
                                       --alias <todoId>:<alias> updates that todo's block instead,
@@ -170,6 +171,7 @@ export function parseCliArgs() {
       mime: { type: "string" },
       card: { type: "string" },
       link: { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
       direction: { type: "string" },
       url: { type: "string" },
       account: { type: "string" },
