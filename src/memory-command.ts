@@ -1,4 +1,4 @@
-/** `memory` — your memory and the current project's, as git checkouts (history, diff, revert, push). */
+/** `memory` — your memory/context and the current project's, as git checkouts (history, diff, revert, push). */
 
 import { spawnSync } from "child_process";
 import { existsSync, mkdirSync } from "fs";
@@ -8,28 +8,29 @@ import { GREEN, RED, RESET } from "./colors";
 
 export function printMemoryHelp() {
   process.stderr.write(`
-tfa-cli memory — memory folders as git checkouts
+tfa-cli memory — memory and context folders as git checkouts
 
 Usage:
   tfa-cli memory sync [--project <id>]   Clone, or pull, into:
-      ~/.todoforai/memory                     your memory          (todoforai:memory)
-      ~/.todoforai/projects/<id>/memory       the project's memory (todoforai:projects/<id>/memory)
-  tfa-cli memory path [--project <id>]   Print the checkout path(s)
+      ~/.todoforai/{memory,context}                 yours          (todoforai:memory, todoforai:context)
+      ~/.todoforai/projects/<id>/{memory,context}   the project's  (todoforai:projects/<id>/…)
+  tfa-cli memory path [--project <id>]   Print the checkout paths
 
-Every change to a memory folder is committed on the server, from any client. In a checkout
+Every change to these folders is committed on the server, from any client. In a checkout
 use plain git: log, diff, show, revert, commit, then \`git push\` — the push updates the live
-folder. A push behind the server is refused: \`git pull\` first. Project memory: members with
-write access push. The project defaults to $TODOFORAI_PROJECT_ID.
+folder. A push behind the server is refused: \`git pull\` first. Files over 5 MB live outside
+history (upload them instead). Project folders: members with write access push. The project
+defaults to $TODOFORAI_PROJECT_ID.
 `);
 }
+
+const FOLDERS = ["memory", "context"];
 
 /** Checkout dir → remote path, for the user and (if any) the project. */
 function checkouts(projectId?: string): [string, string][] {
   const root = join(homedir(), ".todoforai");
-  return [
-    [join(root, "memory"), "memory.git"],
-    ...(projectId ? [[join(root, "projects", projectId, "memory"), `projects/${projectId}/memory.git`] as [string, string]] : []),
-  ];
+  const scopes: [string, string][] = [[root, ""], ...(projectId ? [[join(root, "projects", projectId), `projects/${projectId}/`] as [string, string]] : [])];
+  return scopes.flatMap(([dir, remote]) => FOLDERS.map((f): [string, string] => [join(dir, f), `${remote}${f}.git`]));
 }
 
 function git(args: string[], cwd?: string): { ok: boolean; out: string } {
