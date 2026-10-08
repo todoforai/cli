@@ -5,7 +5,7 @@ import { singleChar } from "./select";
 import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
 import { renderDiff } from "./diff-view";
 import { YELLOW, GREEN, RED, DIM, CYAN, RESET } from "./colors";
-import { setActiveTodo, shutdown, withTimeout, detachNotice } from "./shutdown";
+import { setActiveRun, cancelActiveRun, shutdown, withTimeout, stopsRunOnExit, detachNotice } from "./shutdown";
 
 /** How long a dropped watch socket may stay down before we give up on the run. */
 export const RECONNECT_WINDOW_MS = 60_000;
@@ -72,6 +72,7 @@ export interface WatchOpts {
   json?: boolean;
   autoApprove?: boolean;
   agentSettings?: any;
+  suppressCancelNotice?: boolean;
   activityEvent?: { set(): void };
   /** Messages buffered during callback handoff to replay before watching. */
   replayMessages?: Array<[string, any]>;
@@ -295,8 +296,8 @@ export async function watchTodo(
     }
   }
 
-  // Until a terminal status arrives, an exit leaves this todo running (resume hint).
-  setActiveTodo(todoId);
+  // Until a terminal status arrives, an exit detaches from (or, --isolated, stops) this run.
+  setActiveRun({ ws, projectId, todoId });
   try {
     // A failed first subscribe (backend restarting: connect error, 5xx) is the
     // same situation as a later drop — both go through the reconnect window.
@@ -311,7 +312,7 @@ export async function watchTodo(
       process.stderr.write(`${DIM}Reconnected.${RESET}\n`);
       result = await ws.completion(todoId);
     }
-    setActiveTodo(null);
+    setActiveRun(null);
     process.stdout.write("\n");
     // Exit code tracks the LAST watched turn, so an interactive session that
     // recovers from a failed turn still exits 0.
@@ -327,10 +328,12 @@ export async function watchTodo(
     }
     return true;
   } catch (e: any) {
-    // Couldn't follow the run — it keeps going server-side.
-    setActiveTodo(null);
+    // Couldn't follow the run — an --isolated one can't continue unwatched.
+    await cancelActiveRun();
     process.exitCode = 1;
-    process.stderr.write(detachNotice(todoId));
+    if (!opts.suppressCancelNotice) {
+      process.stderr.write(stopsRunOnExit() ? `${YELLOW}Interrupted${RESET}\n` : detachNotice(todoId));
+    }
     return false;
   }
 }
