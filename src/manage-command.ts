@@ -1,6 +1,6 @@
 /** `todo` and `project` subcommands — field-level edits of a todo / project via field=value. */
 
-import type { ApiClient } from "@shared/api";
+import type { ApiClient, VoiceScope } from "@shared/api";
 import { parseAssignments, resolveAgent } from "./agent-command";
 import { getEnv } from "./args";
 import { getDisplayName, getItemId } from "./select";
@@ -243,6 +243,12 @@ Usage:
   tfa-cli brand voice correct "<what is off>"      Tell the learner what it got wrong; profile is updated
                                                    in one pass and the correction is kept for every re-learn
 
+  Every voice verb takes --scope project|mine|personal — which voice to teach:
+    project   the project's, shared with its members (default; needs write access)
+    mine      yours, only in this project
+    personal  yours, in every project (e.g. your own Gmail)
+  Agents read all three; on the same voice name the narrower wins: mine > project > personal.
+
 
 Questions the UI asks (keys for 'answers'):
   "What makes you different from competitors?"
@@ -318,15 +324,17 @@ export async function voiceDeviceCommand(rest: string[], args: Record<string, an
 
 async function voiceCommand(api: ApiClient, projectId: string, rest: string[], args: Record<string, any>) {
   const [verb, ...vargs] = rest;
+  const scope = args.scope as VoiceScope | undefined;
+  if (scope && !["project", "mine", "personal"].includes(scope)) fail(`--scope must be project, mine or personal, got '${scope}'`);
   if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --account <page-id> | --max N] [--dry-run]");
   // The voice belongs to the project, not the brand page: no brand is needed to teach or learn it.
 
   // Manual answers are the project's "Manual" voice source: Q → A samples, one bucket.
   if (verb === "answers") {
-    const answers = manualAnswersOf((await api.listVoiceSources(projectId)).sources);
+    const answers = manualAnswersOf((await api.listVoiceSources(projectId, scope)).sources);
     if (vargs.length) {
       for (const a of vargs) { const i = a.indexOf("="); if (i < 1) fail(`Expected question=answer, got '${a}'`); answers[a.slice(0, i)] = a.slice(i + 1); }
-      await api.collectVoiceSource(projectId, MANUAL_CHANNEL, { samples: manualSamples(answers) });
+      await api.collectVoiceSource(projectId, MANUAL_CHANNEL, { samples: manualSamples(answers), scope });
       process.stderr.write(`${GREEN}✅ ${vargs.length} answer(s) saved${RESET}\n`);
       return;
     }
@@ -336,7 +344,7 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
   }
 
   if (!verb || verb === "show") {
-    const [{ sources, profile }, brand] = await Promise.all([api.listVoiceSources(projectId), api.getBusinessContext(projectId)]);
+    const [{ sources, profile }, brand] = await Promise.all([api.listVoiceSources(projectId, scope), api.getBusinessContext(projectId)]);
     if (args.json) { console.log(JSON.stringify({ brand, profile, sources }, null, 2)); return; }
     if (brand) process.stderr.write(`${brand.name}  ${DIM}${brand.id}${RESET}\n`);
     process.stderr.write(profile ? `\n${profile.profile}\n${DIM}match ${profile.match}/100 · source ${profile.source}${RESET}\n` : `${DIM}(no voice learned yet)${RESET}\n`);
@@ -354,23 +362,23 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
       process.stderr.write(`${DIM}reading ${channel} on this device…${RESET}\n`);
       const { samples, note } = collectChannel(channel, Number(args.max ?? 40));
       if (!samples.length) fail(`${channel}: nothing usable came back${note ? ` (${note})` : ""}`);
-      const { sources } = await api.collectVoiceSource(projectId, channel, { samples });
+      const { sources } = await api.collectVoiceSource(projectId, channel, { samples, scope });
       process.stderr.write(`${GREEN}✅ ${channel}: ${samples.length} reply pairs stored (${sources.length} source(s))${RESET}\n`);
       return;
     }
-    const { sources } = await api.collectVoiceSource(projectId, channel, { url: args.url, account: args.account });
+    const { sources } = await api.collectVoiceSource(projectId, channel, { url: args.url, account: args.account, scope });
     process.stderr.write(`${GREEN}✅ ${channel} collected (${sources.length} source(s))${RESET}\n`);
     return;
   }
   if (verb === "remove") {
     if (!vargs[0]) fail("Usage: tfa-cli brand voice remove <channel> [--account <id>]   (no --account: every source of the channel)");
-    await api.removeVoiceSource(projectId, vargs[0], args.account ? { account: args.account } : { all: true });
+    await api.removeVoiceSource(projectId, vargs[0], { ...(args.account ? { account: args.account } : { all: true }), scope });
     process.stderr.write(`${GREEN}✅ ${vargs[0]} removed${RESET}\n`);
     return;
   }
   if (verb === "learn") {
     process.stderr.write(`${DIM}learning voice…${RESET}\n`);
-    const res = await api.refineBrandVoice(projectId, args["from-company"] ? "company" : undefined);
+    const res = await api.refineBrandVoice(projectId, args["from-company"] ? "company" : undefined, undefined, scope);
     if (!res.profile) fail(args["from-company"] ? "No brand page to learn from — 'tfa-cli brand create <name>' and fill it first" : "Nothing to learn from — add answers, collect a source, or fill the brand page first");
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     process.stderr.write(`${GREEN}✅ voice learned (match ${res.match}/100, source ${res.source})${RESET}\n${res.profile}\n`);
@@ -379,9 +387,9 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
   if (verb === "correct") {
     const text = vargs.join(" ").trim();
     if (!text) fail('Usage: tfa-cli brand voice correct "<what is off>"');
-    if (!(await api.listVoiceSources(projectId)).profile?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
+    if (!(await api.listVoiceSources(projectId, scope)).profile?.profile) fail("No voice learned yet — 'tfa-cli brand voice learn' first");
     process.stderr.write(`${DIM}applying correction…${RESET}\n`);
-    const res = await api.refineBrandVoice(projectId, undefined, text);
+    const res = await api.refineBrandVoice(projectId, undefined, text, scope);
     if (!res.profile) fail("The correction pass returned nothing — try rewording it");
     if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
     const last = res.iterations[res.iterations.length - 1];

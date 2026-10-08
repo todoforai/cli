@@ -12,24 +12,27 @@ tfa-cli memory — memory and context folders as git checkouts
 
 Usage:
   tfa-cli memory sync [--project <id>]   Clone, or pull, into:
-      ~/.todoforai/{memory,context}                 yours          (todoforai:memory, todoforai:context)
-      ~/.todoforai/projects/<id>/{memory,context}   the project's  (todoforai:projects/<id>/…)
+      ~/.todoforai/{memory,context}                    yours            (todoforai:memory, todoforai:context)
+      ~/.todoforai/projects/<id>/{memory,context}      the project's    (todoforai:projects/<id>/…)
+      ~/.todoforai/projects/<id>/me/{memory,context}   yours in it      (todoforai:projects/<id>/me/…)
   tfa-cli memory path [--project <id>]   Print the checkout paths
 
 Every change to these folders is committed on the server, from any client. In a checkout
 use plain git: log, diff, show, revert, commit, then \`git push\` — the push updates the live
 folder. A push behind the server is refused: \`git pull\` first. Files over 5 MB live outside
-history (upload them instead). Project folders: members with write access push. The project
+history (upload them instead). Project folders: members with write access push; your own in
+a project (me/) is private to you. The project
 defaults to $TODOFORAI_PROJECT_ID.
 `);
 }
 
 const FOLDERS = ["memory", "context"];
 
-/** Checkout dir → remote path, for the user and (if any) the project. */
+/** Checkout dir → remote path, for the user and (if any) the project and theirs within it. */
 function checkouts(projectId?: string): [string, string][] {
   const root = join(homedir(), ".todoforai");
-  const scopes: [string, string][] = [[root, ""], ...(projectId ? [[join(root, "projects", projectId), `projects/${projectId}/`] as [string, string]] : [])];
+  const project = projectId && join(root, "projects", projectId);
+  const scopes: [string, string][] = [[root, ""], ...(project ? [[project, `projects/${projectId}/`], [join(project, "me"), `projects/${projectId}/me/`]] as [string, string][] : [])];
   return scopes.flatMap(([dir, remote]) => FOLDERS.map((f): [string, string] => [join(dir, f), `${remote}${f}.git`]));
 }
 

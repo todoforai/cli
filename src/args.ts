@@ -177,6 +177,7 @@ export function parseCliArgs() {
       url: { type: "string" },
       account: { type: "string" },
       "from-company": { type: "boolean", default: false },
+      scope: { type: "string" },
       "dry-run": { type: "boolean", default: false },
       max: { type: "string" },
       seed: { type: "string" },
