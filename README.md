@@ -39,6 +39,8 @@ echo "content" | tfa-cli                   # pipe from stdin
 tfa-cli --path /my/project "Fix bug"       # explicit workspace
 ```
 
+Ctrl+C (or closing the terminal) only exits the CLI — the todo keeps running; `tfa-cli --resume <id>` reattaches.
+
 ### Start from a registry template
 
 ```bash

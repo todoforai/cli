@@ -49,7 +49,7 @@ import { spawnMayflyBridge } from "./isolated";
 const aliasTodoId = (alias: unknown): string | undefined =>
   typeof alias === "string" && alias.includes(":") ? alias.slice(0, alias.indexOf(":")) : undefined;
 import { runAcp } from "./acp";
-import { installSignalHandlers, onShutdown, shutdown, setActiveRun, trackStart, finish } from "./shutdown";
+import { installSignalHandlers, onShutdown, shutdown, finish } from "./shutdown";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ async function interactiveLoop(
       }
       cfg.addToHistory(input);
       process.stderr.write("─".repeat(40) + "\n");
-      await appendTracked(api, ws, projectId, input, agent, todoId);
+      await api.addMessage(projectId, input, agent, todoId);
       await watchTodo(ws, todoId, projectId, {
         json, autoApprove, agentSettings: agent,
       });
@@ -143,14 +143,6 @@ async function interactiveLoop(
       break;
     }
   }
-}
-
-/** Append a message to an existing todo (restarts its run). A signal while the
- *  request is in flight waits for it, then stops the run (see trackStart). */
-async function appendTracked(api: ApiClient, ws: FrontendWebSocket, projectId: string, text: string, agent: any, todoId: string) {
-  const sent = api.addMessage(projectId, text, agent, todoId).then(() => todoId);
-  trackStart(ws, projectId, sent);
-  await sent;
 }
 
 // ── main ─────────────────────────────────────────────────────────────
@@ -684,7 +676,6 @@ async function main() {
 
     if (!args["no-watch"]) {
       const ws = new FrontendWebSocket(apiUrl, apiKey);
-      setActiveRun({ ws, projectId, todoId });
       await ws.connect();
       const autoApprove = !!args["dangerously-skip-permissions"];
       let agent: any = todo.agentSettings || { id: todo.agentSettingsId };
@@ -694,7 +685,7 @@ async function main() {
       }
 
       await watchTodo(ws, todoId, projectId, {
-        json: !!args.json, autoApprove, agentSettings: agent, exitOnInterrupt: !!args["non-interactive"],
+        json: !!args.json, autoApprove, agentSettings: agent,
       });
 
       if (!args["non-interactive"]) {
@@ -744,9 +735,9 @@ async function main() {
     const followUp = promptArg(positionals) ?? (process.stdin.isTTY ? "" : await readStdin());
     if (followUp) {
       cfg.addToHistory(followUp);
-      await appendTracked(api, ws, projectId, followUp, agent, todoId);
+      await api.addMessage(projectId, followUp, agent, todoId);
       await linkToSpawningBlock(api, todoId);
-      await watchTodo(ws, todoId, projectId, { json: !!args.json, autoApprove, agentSettings: agent, exitOnInterrupt: !!args["non-interactive"] });
+      await watchTodo(ws, todoId, projectId, { json: !!args.json, autoApprove, agentSettings: agent });
     }
     if (!args["non-interactive"]) {
       await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, autoApprove, cfg);
@@ -785,7 +776,7 @@ async function main() {
     onShutdown(mayfly.stop);
     // The todo is scoped to this bridge alone — without it the agent can only fail.
     mayfly.child.on("exit", (code, sig) => {
-      if (!mayfly.stopped()) void shutdown(1, `${RED}Error: isolated bridge died (${sig ?? `code ${code}`}) — stopping todo${RESET}`);
+      if (!mayfly.stopped()) void shutdown(1, `${RED}Error: isolated bridge died (${sig ?? `code ${code}`})${RESET}`);
     });
   }
 
@@ -913,13 +904,9 @@ async function main() {
     agent = { ...agent, permissions: { ...perms, allow: [...(perms.allow || []), "*:*"] } };
   }
   cfg.addToHistory(content);
-  // From here on the run exists server-side: any exit must stop it. A signal
-  // while the create is in flight waits for it (see trackStart).
-  const created = api.addMessage(projectId, content, agent, isolatedTodoId, undefined, undefined, groupTag || undefined, groupName);
-  if (ws) trackStart(ws, projectId, created.then((t: any) => t.id));
   let todo: any;
   try {
-    todo = await created;
+    todo = await api.addMessage(projectId, content, agent, isolatedTodoId, undefined, undefined, groupTag || undefined, groupName);
   } catch (e: any) {
     // Cached default project may belong to another account or be deleted.
     // Only clear the cache when the cache actually picked the project — an
@@ -955,7 +942,6 @@ async function main() {
       json: !!args.json,
       autoApprove,
       agentSettings: agent,
-      exitOnInterrupt: !!args["non-interactive"],
     });
 
     // ── interactive follow-up ──

@@ -5,7 +5,7 @@ import { singleChar } from "./select";
 import { getBlockNewPatterns } from "@shared/fbe/permissionUtils";
 import { renderDiff } from "./diff-view";
 import { YELLOW, GREEN, RED, DIM, CYAN, RESET } from "./colors";
-import { setActiveRun, cancelActiveRun, shutdown, withTimeout } from "./shutdown";
+import { setActiveTodo, shutdown, withTimeout, detachNotice } from "./shutdown";
 
 /** How long a dropped watch socket may stay down before we give up on the run. */
 export const RECONNECT_WINDOW_MS = 60_000;
@@ -72,11 +72,7 @@ export interface WatchOpts {
   json?: boolean;
   autoApprove?: boolean;
   agentSettings?: any;
-  interruptOnCancel?: boolean;
-  suppressCancelNotice?: boolean;
   activityEvent?: { set(): void };
-  /** No follow-up prompt after this run: Ctrl+C stops the todo and exits (130) instead of returning. */
-  exitOnInterrupt?: boolean;
   /** Messages buffered during callback handoff to replay before watching. */
   replayMessages?: Array<[string, any]>;
 }
@@ -109,18 +105,6 @@ export async function watchTodo(
   const diffRendered = new Set<string>();
 
   let approveAll = !!opts.autoApprove;
-  let interruptCount = 0;
-
-  const origHandler = process.listeners("SIGINT").slice();
-  process.removeAllListeners("SIGINT");
-  process.on("SIGINT", () => {
-    interruptCount++;
-    if (opts.exitOnInterrupt || interruptCount >= 2) return void shutdown(130, "Cancelled by user (Ctrl+C)");
-    process.stderr.write(`\n${YELLOW}Interrupting... (Ctrl+C again to force exit)${RESET}\n`);
-    if (opts.interruptOnCancel !== false) {
-      ws.sendInterrupt(projectId, todoId);
-    }
-  });
 
   const pendingBlocks: any[] = [];
   let approvalPromptActive = false;
@@ -311,8 +295,8 @@ export async function watchTodo(
     }
   }
 
-  // Until a terminal status arrives, any exit (signal, lost backend) must stop this run.
-  setActiveRun({ ws, projectId, todoId });
+  // Until a terminal status arrives, an exit leaves this todo running (resume hint).
+  setActiveTodo(todoId);
   try {
     // A failed first subscribe (backend restarting: connect error, 5xx) is the
     // same situation as a later drop — both go through the reconnect window.
@@ -327,7 +311,7 @@ export async function watchTodo(
       process.stderr.write(`${DIM}Reconnected.${RESET}\n`);
       result = await ws.completion(todoId);
     }
-    setActiveRun(null);
+    setActiveTodo(null);
     process.stdout.write("\n");
     // Exit code tracks the LAST watched turn, so an interactive session that
     // recovers from a failed turn still exits 0.
@@ -343,16 +327,10 @@ export async function watchTodo(
     }
     return true;
   } catch (e: any) {
-    // Couldn't follow the run — don't leave it running unwatched.
-    await cancelActiveRun();
+    // Couldn't follow the run — it keeps going server-side.
+    setActiveTodo(null);
     process.exitCode = 1;
-    if (!opts.suppressCancelNotice) {
-      process.stderr.write(`${YELLOW}Interrupted${RESET}\n`);
-    }
+    process.stderr.write(detachNotice(todoId));
     return false;
-  } finally {
-    // Restore SIGINT handlers
-    process.removeAllListeners("SIGINT");
-    for (const fn of origHandler) process.on("SIGINT", fn as any);
   }
 }
