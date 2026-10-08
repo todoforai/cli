@@ -229,10 +229,13 @@ export function applySlice<T>(arr: T[], spec: string): T[] {
   return arr.slice(start, end);
 }
 
-const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n) + `\n${DIM}... (${s.length} chars)${RESET}` : s;
+const truncAt = (s: string, n: number) => s.length > n ? s.slice(0, n) + `\n${DIM}... (${s.length} chars, --full for all)${RESET}` : s;
 const indent = (s: string, pre: string) => s.split("\n").join(`\n${pre}`);
 
-export function printFullChat(todo: any, frontendUrl: string, slice?: string, mode: InspectMode = "default", format: InspectFormat = "compact") {
+export function printFullChat(todo: any, frontendUrl: string, slice?: string, mode: InspectMode = "default", format: InspectFormat = "compact", full = false) {
+  // One stream: the log reads in order through `| less`/`| grep`/`> file`.
+  const out = (s: string) => process.stdout.write(s);
+  const trunc = (s: string, n: number) => full ? s : truncAt(s, n);
   const statusColors: Record<string, string> = {
     DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
     ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED,
@@ -240,21 +243,21 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
   };
   const statusColor = statusColors[todo.status] || DIM;
 
-  process.stderr.write(`${BOLD}TODO${RESET} ${todo.id}\n`);
-  process.stderr.write(`${DIM}Status:${RESET} ${statusColor}${todo.status}${RESET}\n`);
-  process.stderr.write(`${DIM}URL:${RESET}    ${CYAN}${frontendUrl}${RESET}\n`);
-  process.stderr.write(`${DIM}Created:${RESET} ${new Date(todo.createdAt).toLocaleString()}\n`);
-  if (todo.agentSettingsId) process.stderr.write(`${DIM}Agent:${RESET}  ${todo.agentSettingsId}\n`);
-  if (slice) process.stderr.write(`${DIM}Slice:${RESET}  [${slice}]\n`);
-  process.stderr.write("─".repeat(60) + "\n");
+  out(`${BOLD}TODO${RESET} ${todo.id}\n`);
+  out(`${DIM}Status:${RESET} ${statusColor}${todo.status}${RESET}\n`);
+  out(`${DIM}URL:${RESET}    ${CYAN}${frontendUrl}${RESET}\n`);
+  out(`${DIM}Created:${RESET} ${new Date(todo.createdAt).toLocaleString()}\n`);
+  if (todo.agentSettingsId) out(`${DIM}Agent:${RESET}  ${todo.agentSettingsId}\n`);
+  if (slice) out(`${DIM}Slice:${RESET}  [${slice}]\n`);
+  out("─".repeat(60) + "\n");
 
   let messages = todo.messages || [];
   if (slice) {
     try { messages = applySlice(messages, slice); }
-    catch (e: any) { process.stderr.write(`${RED}${e.message}${RESET}\n`); process.exit(2); }
+    catch (e: any) { out(`${RED}${e.message}${RESET}\n`); process.exit(2); }
   }
   if (!messages.length) {
-    process.stderr.write(`${DIM}(no messages)${RESET}\n`);
+    out(`${DIM}(no messages)${RESET}\n`);
     return;
   }
 
@@ -267,26 +270,26 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
     const orig = messages[i];
     const ts = mode !== "default" && orig?.createdAt ? ` ${DIM}${new Date(orig.createdAt).toLocaleTimeString()}${RESET}` : "";
     const label = msg.role === "user" ? `${CYAN}▶ USER${RESET}` : `${GREEN}◀ ASSISTANT${RESET}`;
-    process.stderr.write(`\n${label}${ts}\n`);
+    out(`\n${label}${ts}\n`);
 
     const items = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
     for (const it of items) {
       if (it.type === "text") {
-        if (it.text) process.stdout.write(trunc(it.text, 2000) + "\n");
+        if (it.text) out(trunc(it.text, 2000) + "\n");
       } else if (it.type === "image" || it.type === "document") {
         const s = it.source ?? {};
-        process.stderr.write(`  ${YELLOW}[${it.type}]${RESET} ${DIM}${s.mimeType ?? ""}${RESET} ${s.name ?? ""} ${DIM}(${s.size ?? "?"} bytes)${RESET}\n  ${DIM}${s.uri ?? ""}${RESET}\n`);
+        out(`  ${YELLOW}[${it.type}]${RESET} ${DIM}${s.mimeType ?? ""}${RESET} ${s.name ?? ""} ${DIM}(${s.size ?? "?"} bytes)${RESET}\n  ${DIM}${s.uri ?? ""}${RESET}\n`);
       } else if (it.type === "thinking") {
-        if (it.thinking) process.stderr.write(`${DIM}[thinking]${RESET} ${trunc(it.thinking, 500)}\n`);
+        if (it.thinking) out(`${DIM}[thinking]${RESET} ${trunc(it.thinking, 500)}\n`);
       } else if (it.type === "tool_use") {
         toolUseCount++;
         if (it.content) {
           // compact format: '<name attr="..."/>' — show as-is, just truncated.
-          process.stderr.write(`  ${YELLOW}${trunc(it.content, 200)}${RESET}\n`);
+          out(`  ${YELLOW}${trunc(it.content, 200)}${RESET}\n`);
         } else {
           // anthropic format: structured name+input.
-          const argStr = Object.entries(it.input || {}).map(([k, v]) => `${DIM}${k}=${RESET}${String(v).split("\n")[0].slice(0, 80)}`).join(" ");
-          process.stderr.write(`  ${YELLOW}[${it.name}]${RESET} ${argStr}\n`);
+          const argStr = Object.entries(it.input || {}).map(([k, v]) => `${DIM}${k}=${RESET}${(full ? String(v) : String(v).split("\n")[0].slice(0, 80))}`).join(" ");
+          out(`  ${YELLOW}[${it.name}]${RESET} ${argStr}\n`);
         }
       } else if (it.type === "tool_result") {
         const errLabel = it.is_error ? ` ${RED}ERROR${RESET}` : it.status && it.status !== "COMPLETED" ? ` ${RED}${it.status}${RESET}` : "";
@@ -305,11 +308,11 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
             return "";
           }).join("\n");
         }
-        process.stderr.write(`  ${DIM}└─ result:${RESET}${status} ${indent(trunc(bodyStr, 500), `     ${DIM}│${RESET} `)}\n`);
+        out(`  ${DIM}└─ result:${RESET}${status} ${indent(trunc(bodyStr, 500), `     ${DIM}│${RESET} `)}\n`);
       }
     }
   }
 
-  process.stderr.write("\n" + "─".repeat(60) + "\n");
-  process.stderr.write(`${DIM}Messages: ${shaped.length} | Tool calls: ${toolUseCount} | Tool errors: ${errorCount}${RESET}\n`);
+  out("\n" + "─".repeat(60) + "\n");
+  out(`${DIM}Messages: ${shaped.length} | Tool calls: ${toolUseCount} | Tool errors: ${errorCount}${RESET}\n`);
 }

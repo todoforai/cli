@@ -71,6 +71,7 @@ Options:
   --no-bridge                     Do not auto-spawn bridge
   --json
   --detailed | --format-anthropic  inspect --json: keep ids/timestamps | Anthropic messages shape
+  --full                          inspect: no truncation of text, thinking, tool calls and results
   --safe                          Validate API key upfront
   --debug, -d
   --debug-dump                    Attach LLM request debug info per turn (requires server grant)
@@ -200,6 +201,7 @@ export function parseCliArgs() {
       "no-edge": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       detailed: { type: "boolean", default: false },
+      full: { type: "boolean", default: false },
       "format-anthropic": { type: "boolean", default: false },
       safe: { type: "boolean", default: false },
       debug: { type: "boolean", short: "d", default: false },

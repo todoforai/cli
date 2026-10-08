@@ -631,7 +631,7 @@ async function main() {
     }
     const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
     const format: InspectFormat = args["format-anthropic"] ? "anthropic" : "compact";
-    printFullChat(todo, getFrontendUrl(apiUrl, todoId), slice, mode, format);
+    printFullChat(todo, getFrontendUrl(apiUrl, todoId), slice, mode, format, args.full);
     return;
   }
 
