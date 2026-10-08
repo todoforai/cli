@@ -7,7 +7,8 @@ export type InspectFormat = "compact" | "anthropic";
 
 /** Escape value for an XML-tag-style attribute. We use JSON.stringify so
  *  newlines, quotes, etc. are stable and re-parseable. */
-const xmlAttr = (v: any) => JSON.stringify(String(v));
+const str = (v: any) => typeof v === "string" ? v : JSON.stringify(v);
+const xmlAttr = (v: any) => JSON.stringify(str(v));
 
 /** Drop noise from inspect --json output by mode.
  *  default: chat-shape only — assistant text/tool calls/results, user content.
@@ -288,7 +289,7 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
           out(`  ${YELLOW}${trunc(it.content, 200)}${RESET}\n`);
         } else {
           // anthropic format: structured name+input.
-          const argStr = Object.entries(it.input || {}).map(([k, v]) => `${DIM}${k}=${RESET}${(full ? String(v) : String(v).split("\n")[0].slice(0, 80))}`).join(" ");
+          const argStr = Object.entries(it.input || {}).map(([k, v]) => `${DIM}${k}=${RESET}${(full ? str(v) : str(v).split("\n")[0].slice(0, 80))}`).join(" ");
           out(`  ${YELLOW}[${it.name}]${RESET} ${argStr}\n`);
         }
       } else if (it.type === "tool_result") {
