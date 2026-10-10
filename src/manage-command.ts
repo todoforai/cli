@@ -412,6 +412,7 @@ Usage:
   tfa-cli device access <device>               who you shared the device with
   tfa-cli device share <device> <email>        let a teammate use it (their runs act as THEM)
   tfa-cli device unshare <device> <email>
+  tfa-cli device leave <device>                remove your own access to a shared device
 
 <device> is an id, name or hostname (unique partial works).
 Devices shared with you are marked "shared"; only the owner can rename/share them.
@@ -443,6 +444,11 @@ export async function deviceCommand(api: ApiClient, positionals: string[], args:
     if (!value) fail("Usage: tfa-cli device rename <device> <name>");
     await api.renameDevice(found.id, value);
     process.stderr.write(`${GREEN}✅ ${found.name} → ${value}${RESET}\n`);
+    return;
+  }
+  if (sub === "leave") {
+    await api.leaveDevice(found.id);
+    process.stderr.write(`${GREEN}✅ Removed ${found.name} from your devices${RESET}\n`);
     return;
   }
   if (sub === "access" || sub === "share" || sub === "unshare") {
