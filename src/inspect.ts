@@ -83,16 +83,22 @@ function blockToAnthropic(block: any, mode: InspectMode, format: InspectFormat):
     return [{ type: "text", text: `[error] ${msg}` }];
   }
 
+  // Orchestrator calls use the same args/result envelope as model tools. Do not
+  // stringify nested args as [object Object] or drop outputs stored in meta.text.
+  const name = t === 'named_tool' ? (block.tool_name === 'run_shell' ? 'bash' : block.tool_name) : t;
   // Build the tool_use. Take every backend field that isn't pure metadata.
   const inputFields: [string, any][] = [];
   for (const [k, v] of Object.entries(block)) {
-    if (BLOCK_META_KEYS.has(k)) continue;
+    if (BLOCK_META_KEYS.has(k) || k === 'args' || (t === 'named_tool' && k === 'tool_name')) continue;
     if (v === undefined || v === null || v === "") continue;
     inputFields.push([k, v]);
   }
+  for (const [k, v] of Object.entries(block.args ?? {})) {
+    if (!inputFields.some(([key]) => key === k)) inputFields.push([k, v]);
+  }
   const use: any = format === "anthropic"
-    ? { type: "tool_use", id: block.id, name: t, input: Object.fromEntries(inputFields) }
-    : { type: "tool_use", content: `<${t}${inputFields.map(([k, v]) => ` ${k}=${xmlAttr(v)}`).join("")}/>` };
+    ? { type: "tool_use", id: block.id, name, input: Object.fromEntries(inputFields) }
+    : { type: "tool_use", content: `<${name}${inputFields.map(([k, v]) => ` ${k}=${xmlAttr(v)}`).join("")}/>` };
   if (format === "compact" && mode !== "default") use.id = block.id;
 
   // Build the tool_result, if any.
@@ -108,7 +114,8 @@ function blockToAnthropic(block: any, mode: InspectMode, format: InspectFormat):
           if (att.originalName && !isAutoName) source.name = att.originalName;
           parts.push({ type: isImage ? "image" : "document", source });
         }
-        if (typeof r.content === "string" && r.content) parts.push({ type: "text", text: r.content });
+        const text = r.content || r.meta?.text;
+        if (typeof text === "string" && text) parts.push({ type: "text", text });
         return parts;
       });
       const result: any = { type: "tool_result", tool_use_id: block.id };
@@ -123,7 +130,8 @@ function blockToAnthropic(block: any, mode: InspectMode, format: InspectFormat):
           const nameAttr = att.originalName && !isAutoName ? ` name=${xmlAttr(att.originalName)}` : "";
           parts.push(`<attachment uri=${xmlAttr(att.uri)}${nameAttr} size=${att.fileSize}/>`);
         }
-        if (typeof r.content === "string" && r.content) parts.push(r.content);
+        const text = r.content || r.meta?.text;
+        if (typeof text === "string" && text) parts.push(text);
       }
       const result: any = { type: "tool_result", content: parts.join("\n") };
       if (mode !== "default") result.tool_use_id = block.id;
