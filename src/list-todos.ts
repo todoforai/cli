@@ -1,7 +1,7 @@
 /** `todoforai-cli list` — list todos (gh issue list style).
  *
  * Defaults mirror `gh issue list`:
- *   - open-only (hides DONE/ARCHIVED/DELETED and checked READY/ERROR/CANCELLED)
+ *   - open-only (hides DONE/ARCHIVED/DELETED)
  *   - last 30, recent first (by lastActivityAt)
  *
  * Uses the backend's cursor-paginated endpoint. Pass the printed `--cursor`
@@ -43,7 +43,7 @@ Flags:
       --page-size <n>      Backend page size per request (default: min(limit, 400), max: 400)
       --search <text>      Search content/status on the backend
   -s, --status <S[,S2]>    Filter by status (comma-separated, union).
-  -A, --all                Include closed (DONE, ARCHIVED, *_CHECKED, …)
+  -A, --all                Include closed (DONE, ARCHIVED, DELETED)
       --project <id>       Project ID (default: current default project)
       --json               Output { items, nextCursor } as JSON
   -h, --help               Show this help
