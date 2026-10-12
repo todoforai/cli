@@ -9,7 +9,7 @@
  */
 
 import { parseArgs } from "util";
-import { TodoStatus } from "@shared/fbe";
+import { TodoStatus, CLOSED_STATUSES } from "@shared/fbe";
 import { CYAN, DIM, GREEN, YELLOW, RED, RESET } from "./colors";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -20,10 +20,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 // "Closed" / hidden by default — analogous to gh's --state open default.
-const CLOSED = new Set([
-  "DONE", "READY_CHECKED", "CANCELLED", "CANCELLED_CHECKED",
-  "ERROR_CHECKED", "ARCHIVED", "DELETED",
-]);
+const CLOSED = new Set<string>(CLOSED_STATUSES);
 
 const VALID_STATUS = new Set<string>(Object.values(TodoStatus));
 const isOpen = (s: string) => !CLOSED.has(s);
@@ -198,6 +195,8 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
     const requestLimit = Math.min(pageSize, limit - rows.length);
     const page = toItemsPage(await api.listTodos(projectId, {
       limit: requestLimit, cursor, search, since, contributorIds,
+      // Server-side open-only filter; the loop below re-checks for older backends.
+      ...(!includeClosed && { excludeClosed: true }),
       ...(sort !== "activity" && { sort }),
     }));
     backendNextCursor = page.nextCursor;
