@@ -37,7 +37,12 @@ Usage:
 
 Flags:
   -n, --limit <n>          Max rows to show (default: 30)
-      --cursor <n>         Fetch todos older than this cursor (lastActivityAt)
+      --cursor <n>         Fetch todos older than this cursor (sort field, epoch ms)
+      --since <t>          Only todos with sort field >= t (inclusive)
+      --until <t>          Only todos with sort field < t (exclusive)
+                           t = epoch ms | YYYY-MM-DD (local midnight) | ISO datetime | 12h / 3d ago
+      --sort <key>         activity (lastActivityAt, default) | created (createdAt)
+      --contributor <u>    Only todos a member opened/wrote in (id or email; comma = any)
       --page-size <n>      Backend page size per request (default: min(limit, 100), max: 100)
       --search <text>      Search content/status on the backend
   -s, --status <S[,S2]>    Filter by status (comma-separated, union).
@@ -52,6 +57,8 @@ Examples:
   todoforai-cli list --cursor 1719234567890  # next page
   todoforai-cli list --all                   # include DONE
   todoforai-cli list -s RUNNING,REVIEW_REQUESTED
+  todoforai-cli list -A --since 2026-10-11 --until 2026-10-12   # touched that day
+  todoforai-cli list -A --sort created --since 7d --contributor a@b.com
   todoforai-cli list --search bug --json | jq '.items[].id'
 `);
 }
@@ -76,6 +83,22 @@ function cursorValue(value: unknown): number | undefined {
   return n;
 }
 
+/** epoch ms | YYYY-MM-DD (local midnight) | ISO datetime | relative "12h"/"3d"/"30m" ago. */
+export function parseTime(value: unknown, name: string, now = Date.now()): number | undefined {
+  if (value === undefined) return undefined;
+  const s = String(value).trim();
+  const rel = s.match(/^(\d+)([mhd])$/);
+  let n: number;
+  if (/^\d+$/.test(s)) n = Number(s);
+  else if (rel) n = now - Number(rel[1]) * { m: 60_000, h: 3_600_000, d: 86_400_000 }[rel[2] as "m" | "h" | "d"];
+  else n = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00` : s);
+  if (!Number.isFinite(n) || n < 0) {
+    process.stderr.write(`${RED}Error: ${name} must be epoch ms, YYYY-MM-DD, ISO datetime or e.g. 12h / 3d${RESET}\n`);
+    process.exit(2);
+  }
+  return n;
+}
+
 function toItemsPage(response: any): { items: any[]; nextCursor?: number } {
   // Back-compat for older/dev backends that returned a bare array.
   if (Array.isArray(response)) return { items: response };
@@ -85,8 +108,21 @@ function toItemsPage(response: any): { items: any[]; nextCursor?: number } {
   };
 }
 
-function rowTime(t: any): number {
-  return Number(t.lastActivityAt ?? t.createdAt ?? 0);
+function rowTime(t: any, sort: string = "activity"): number {
+  return Number((sort === "created" ? t.createdAt : t.lastActivityAt ?? t.createdAt) ?? 0);
+}
+
+/** Comma list of user ids or member emails → user ids (emails resolved via project members). */
+async function resolveContributors(api: any, projectId: string, raw: string): Promise<string[]> {
+  const wanted = raw.split(",").map(s => s.trim()).filter(Boolean);
+  if (!wanted.some(w => w.includes("@"))) return wanted;
+  const members: { id: string; email?: string }[] = await api.getProjectMembers(projectId);
+  return wanted.map(w => {
+    if (!w.includes("@")) return w;
+    const m = members.find(m => m.email?.toLowerCase() === w.toLowerCase());
+    if (!m) { process.stderr.write(`${RED}Error: no project member with email ${w}${RESET}\n`); process.exit(2); }
+    return m!.id;
+  });
 }
 
 function printStatusError(unknown: string[]) {
@@ -109,6 +145,10 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
       cursor:     { type: "string" },
       "page-size": { type: "string" },
       search:     { type: "string" },
+      since:      { type: "string" },
+      until:      { type: "string" },
+      sort:       { type: "string" },
+      contributor: { type: "string" },
       status:     { type: "string",  short: "s" },
       all:        { type: "boolean", short: "A", default: false },
       project:    { type: "string" },
@@ -125,8 +165,20 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
 
   const limit = positiveInt(values.limit, "--limit") ?? 30;
   const pageSize = Math.min(positiveInt(values["page-size"], "--page-size") ?? Math.min(Math.max(limit, 1), 100), 100);
+  const sort = values.sort === undefined ? "activity" : String(values.sort);
+  if (sort !== "activity" && sort !== "created") {
+    process.stderr.write(`${RED}Error: --sort must be activity or created${RESET}\n`);
+    process.exit(2);
+  }
+  const since = parseTime(values.since, "--since");
+  const until = parseTime(values.until, "--until");
+  // --until is just the first page's exclusive cursor; an explicit --cursor further back wins.
   let cursor = cursorValue(values.cursor);
+  if (until !== undefined) cursor = cursor === undefined ? until : Math.min(cursor, until);
   const search = values.search ? String(values.search) : undefined;
+  const contributorIds = values.contributor
+    ? await resolveContributors(api, projectId, String(values.contributor))
+    : undefined;
 
   // Parse --status. "OPEN" is a pseudo-status meaning "any non-closed". Unknown
   // statuses fall back to OPEN (so a typo/legacy value shows the open list, not nothing).
@@ -144,10 +196,15 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
 
   while (rows.length < limit) {
     const requestLimit = Math.min(pageSize, limit - rows.length);
-    const page = toItemsPage(await api.listTodos(projectId, { limit: requestLimit, cursor, search }));
+    const page = toItemsPage(await api.listTodos(projectId, {
+      limit: requestLimit, cursor, search, since, contributorIds,
+      ...(sort !== "activity" && { sort }),
+    }));
     backendNextCursor = page.nextCursor;
 
     for (const t of page.items) {
+      // Re-check client-side: a backend predating `since`/`sort` ignores them.
+      if (since !== undefined && rowTime(t, sort) < since) continue;
       const status = String(t.status).toUpperCase();
       if (!includeClosed && CLOSED.has(status)) continue;
       if (!matchesRequestedStatus(t, requested, wanted, wantOpen)) continue;
@@ -159,7 +216,7 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
     cursor = backendNextCursor;
   }
 
-  rows.sort((a, b) => rowTime(b) - rowTime(a));
+  rows.sort((a, b) => rowTime(b, sort) - rowTime(a, sort));
   const visible = rows.slice(0, limit);
 
   // Use the last printed row as the next cursor only when either the backend
@@ -168,7 +225,7 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
   // the backend returned the final page exactly at the requested limit.
   const hasBufferedRows = rows.length > visible.length;
   const nextCursor = visible.length && (backendNextCursor !== undefined || hasBufferedRows)
-    ? rowTime(visible[visible.length - 1])
+    ? rowTime(visible[visible.length - 1], sort)
     : undefined;
 
   if (values.json) {
@@ -186,7 +243,7 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
   for (const t of visible) {
     const status = String(t.status).toUpperCase();
     const sc = STATUS_COLOR[status] || DIM;
-    const ts = new Date(rowTime(t)).toISOString().slice(0, 16).replace("T", " ");
+    const ts = new Date(rowTime(t, sort)).toISOString().slice(0, 16).replace("T", " ");
     const title = String(t.content ?? "").split("\n")[0].slice(0, 100);
     process.stdout.write(`${sc}${status.padEnd(statusW)}${RESET}  ${DIM}${ts}${RESET}  ${t.id}  ${title}\n`);
   }
