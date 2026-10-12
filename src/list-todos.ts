@@ -43,7 +43,7 @@ Flags:
                            t = epoch ms | YYYY-MM-DD (local midnight) | ISO datetime | 12h / 3d ago
       --sort <key>         activity (lastActivityAt, default) | created (createdAt)
       --contributor <u>    Only todos a member opened/wrote in (id or email; comma = any)
-      --page-size <n>      Backend page size per request (default: min(limit, 100), max: 100)
+      --page-size <n>      Backend page size per request (default: min(limit, 400), max: 400)
       --search <text>      Search content/status on the backend
   -s, --status <S[,S2]>    Filter by status (comma-separated, union).
   -A, --all                Include DONE (also CANCELLED, ARCHIVED, …)
@@ -164,7 +164,7 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
   if (!projectId) { process.stderr.write(`${RED}Error: no project (pass --project <id> or set a default)${RESET}\n`); process.exit(1); }
 
   const limit = positiveInt(values.limit, "--limit") ?? 30;
-  const pageSize = Math.min(positiveInt(values["page-size"], "--page-size") ?? Math.min(Math.max(limit, 1), 100), 100);
+  const pageSize = Math.min(positiveInt(values["page-size"], "--page-size") ?? Math.min(Math.max(limit, 1), 400), 400);
   const sort = values.sort === undefined ? "activity" : String(values.sort);
   if (sort !== "activity" && sort !== "created") {
     process.stderr.write(`${RED}Error: --sort must be activity or created${RESET}\n`);
@@ -202,8 +202,12 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
     }));
     backendNextCursor = page.nextCursor;
 
+    let exhausted = false;
     for (const t of page.items) {
-      // Re-check client-side: a backend predating `since`/`sort` ignores them.
+      // Re-check client-side: a backend predating `since`/`sort` ignores them. Pages
+      // come newest-first by activity or createdAt, and createdAt <= lastActivityAt,
+      // so once activity drops below `since` nothing further can match: stop paging.
+      if (since !== undefined && rowTime(t) < since) { exhausted = true; break; }
       if (since !== undefined && rowTime(t, sort) < since) continue;
       const status = String(t.status).toUpperCase();
       if (!includeClosed && CLOSED.has(status)) continue;
@@ -212,6 +216,7 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
       if (rows.length >= limit) break;
     }
 
+    if (exhausted) { backendNextCursor = undefined; break; }
     if (!backendNextCursor || page.items.length === 0) break;
     cursor = backendNextCursor;
   }
