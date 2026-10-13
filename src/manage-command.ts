@@ -261,11 +261,10 @@ Usage:
   tfa-cli brand voice correct "<what is off>"      Tell the learner what it got wrong; profile is updated
                                                    in one pass and the correction is kept for every re-learn
 
-  Every voice verb takes --scope project|mine|personal — which voice to teach:
-    project   the project's, shared with its members (default; needs write access)
-    mine      yours, only in this project
-    personal  yours, in every project (e.g. your own Gmail)
-  Agents read all three; on the same voice name the narrower wins: mine > project > personal.
+  Every voice verb takes --scope mine|project — which voice to teach:
+    mine      yours, only in this project (default)
+    project   the project's, shared with its members (needs write access)
+  On the same voice name the narrower wins: mine > project.
 
 
 Questions the UI asks (keys for 'answers'):
@@ -342,8 +341,8 @@ export async function voiceDeviceCommand(rest: string[], args: Record<string, an
 
 async function voiceCommand(api: ApiClient, projectId: string, rest: string[], args: Record<string, any>) {
   const [verb, ...vargs] = rest;
-  const scope = args.scope as VoiceScope | undefined;
-  if (scope && !["project", "mine", "personal"].includes(scope)) fail(`--scope must be project, mine or personal, got '${scope}'`);
+  const scope = (args.scope ?? "mine") as VoiceScope;
+  if (!["project", "mine"].includes(scope)) fail(`--scope must be mine or project, got '${scope}'`);
   if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --account <page-id> | --max N] [--dry-run]");
   // The voice belongs to the project, not the brand page: no brand is needed to teach or learn it.
 

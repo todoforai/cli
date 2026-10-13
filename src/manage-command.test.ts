@@ -30,3 +30,19 @@ test('project group intake routes on/off/read/regenerate without changing other 
   await projectCommand(api as any, ['project', 'groups', 'intake', 'audience', 'regenerate'], { json: true }, 'demo');
   expect(api.regenerateProjectGroupIntake).toHaveBeenCalledWith('demo', 'audience');
 });
+
+test('voice defaults to mine, allows project and rejects the removed global scope', async () => {
+  const { brandCommand } = await import('./manage-command');
+  const listVoiceSources = mock(async () => ({ sources: [], profile: null }));
+  const api = { listVoiceSources, getBusinessContext: async () => null };
+  await brandCommand(api as any, ['brand', 'voice', 'show'], { json: true }, 'p');
+  expect(listVoiceSources).toHaveBeenLastCalledWith('p', 'mine');
+  await brandCommand(api as any, ['brand', 'voice', 'show'], { json: true, scope: 'project' }, 'p');
+  expect(listVoiceSources).toHaveBeenLastCalledWith('p', 'project');
+  const { spyOn } = await import('bun:test');
+  const exit = spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+  try {
+    await expect(brandCommand(api as any, ['brand', 'voice', 'show'], { scope: 'personal' }, 'p')).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(2);
+  } finally { exit.mockRestore(); }
+});
