@@ -102,6 +102,13 @@ Usage:
 
 todo-id defaults to $TODOFORAI_TODO_ID (agent shell) or the last todo this CLI touched.
 
+Viewer chrome:
+  --title appears in the header; a kebab menu holds file actions, versions and sharing when available.
+  Desktop floating previews add minimize (park in a tab), maximize/restore and close (X).
+  Inline blocks have no window controls. Do not draw these controls or a duplicate title bar in authored HTML.
+  The floating viewer owns the rounded frame. Keep the HTML root flat, without a border, radius, shadow or outer margin;
+  internal content padding and spacing are fine. Existing files and websites keep their own styling.
+
 When to use what:
   read once, move on             → plain chat reply
   interactive, this chat only    → html_snippet (can exec/connect/chat back)
