@@ -52,6 +52,8 @@ Usage:
   tfa-cli project settings <field=value>…          Project settings (PUT /settings/projects/{id})
   tfa-cli project groups                           List todo groups
   tfa-cli project groups set <slug> <field=value>… Create/update a group: name description pinned archived order
+  tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
+                                                   Public intake: autoStart maxSubmissions postIpLimit placeholder agentSettingsId
   tfa-cli project groups reorder <slug>…           Set wall order
   tfa-cli project surfaces                         List the board's card surfaces (live refs shown as cards)
   tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [order=N]
@@ -177,6 +179,22 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       const group = await api.upsertProjectGroup(projectId, slug, parseAssignments(fields));
       if (args.json) { console.log(JSON.stringify(group, null, 2)); return; }
       process.stderr.write(`${GREEN}✅ group ${slug} saved${RESET}\n`);
+      return;
+    }
+    if (verb === "intake") {
+      const [slug, ...options] = gargs;
+      if (!slug) fail("Usage: tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…");
+      const action = ["on", "off", "regenerate"].includes(options[0]) ? options.shift() : undefined;
+      if (options.length && action === "regenerate") fail("regenerate does not accept settings");
+      const fields = parseAssignments(options);
+      const intake = action === "regenerate"
+        ? await api.regenerateProjectGroupIntake(projectId, slug)
+        : action || options.length
+          ? await api.updateProjectGroupIntake(projectId, slug, { ...fields, ...(action && { enabled: action === "on" }) })
+          : await api.getProjectGroupIntake(projectId, slug);
+      if (args.json) { console.log(JSON.stringify(intake, null, 2)); return; }
+      process.stderr.write(`${slug}: public ${intake.enabled ? "on" : "off"}, ${intake.submissionCount}/${intake.maxSubmissions}, autoStart=${intake.autoStart}\n`);
+      if (intake.url) console.log(intake.url);
       return;
     }
     if (verb === "reorder") {
