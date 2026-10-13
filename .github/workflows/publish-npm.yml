@@ -8,6 +8,9 @@ on:
 jobs:
   deploy-npm:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
     - uses: actions/checkout@v4
@@ -19,9 +22,9 @@ jobs:
         bun-version: "1.3.14"
 
     - name: Set up Node
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
-        node-version: '22'
+        node-version: '24'
         registry-url: 'https://registry.npmjs.org'
 
     - name: Checkout shared packages
@@ -38,8 +41,8 @@ jobs:
 
     - name: Resolve version & publish
       id: publish
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # npm authenticates through GitHub OIDC; configure this workflow as the
+      # trusted publisher on npmjs.com for @todoforai/cli (no environment).
       run: |
         PACKAGE_NAME=$(jq -r '.name' package.json)
         LOCAL_VERSION=$(jq -r '.version' package.json)
