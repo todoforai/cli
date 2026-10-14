@@ -41,8 +41,11 @@ jobs:
 
     - name: Resolve version & publish
       id: publish
-      # npm authenticates through GitHub OIDC; configure this workflow as the
-      # trusted publisher on npmjs.com for @todoforai/cli (no environment).
+      # npm prefers GitHub OIDC (trusted publisher on npmjs.com for @todoforai/cli)
+      # and falls back to NPM_TOKEN while that isn't configured — without the
+      # fallback every publish 404s.
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       run: |
         PACKAGE_NAME=$(jq -r '.name' package.json)
         LOCAL_VERSION=$(jq -r '.version' package.json)
