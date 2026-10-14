@@ -9,7 +9,7 @@ jobs:
   deploy-npm:
     runs-on: ubuntu-22.04
     permissions:
-      contents: read
+      contents: write  # push the release tag with GITHUB_TOKEN
       id-token: write
 
     steps:
@@ -86,10 +86,8 @@ jobs:
       if: success() && steps.publish.outputs.new_version
       env:
         NEW_VERSION: ${{ steps.publish.outputs.new_version }}
-        GH_PAT: ${{ secrets.GH_PAT }}
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
-        git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
         git push origin "v$NEW_VERSION"
