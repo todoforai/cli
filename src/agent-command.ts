@@ -28,6 +28,8 @@ Fields map directly to agent settings; values are parsed as JSON when possible
   temperature     number, e.g. 0.7
   thinkingLevel   low | medium | high | xhigh | max
   refusalFallbackModel   model to switch to if 'model' refuses (empty = off)
+  autoCompaction  true | false — automatic context compaction (default true)
+  contextLimit    tokens compaction is measured against (0 = auto from model, max 200K)
   name            agent display name
 
 Examples:
