@@ -1,5 +1,6 @@
 {
   "name": "@todoforai/cli",
+  "license": "MIT",
   "description": "TODOforAI CLI — create and manage tasks with tfa-cli.",
   "homepage": "https://todofor.ai",
   "repository": {

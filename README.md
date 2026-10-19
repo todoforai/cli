@@ -137,3 +137,7 @@ No global install needed — `"command": "npx", "args": ["-y", "@todoforai/cli",
 --reset-config                  Reset config file
 --help, -h                      Show this help
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).
