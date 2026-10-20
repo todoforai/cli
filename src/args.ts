@@ -39,6 +39,7 @@ Examples:
   tfa-cli show <file|-> [todo-id]     # Render a local file (image/pdf/html…) in the chat; - = stdin
   tfa-cli show list|rm …              # List / take down shown files
   tfa-cli open <url> [todo-id]        # Live url preview in the chat
+  tfa-cli connect <key>… [--reason "why"]  # Sign-in card for connectors on this machine (several keys = one choice)
   tfa-cli recommend --template <id>    # Add a template as a recommendation card
   tfa-cli inbox [needs-you|messages|activity] [--unread]  # Read the notification feed (the bell)
   tfa-cli inbox seen [tab]              # Mark notifications read
@@ -181,6 +182,7 @@ export function parseCliArgs() {
       link: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       direction: { type: "string" },
+      reason: { type: "string" },
       url: { type: "string" },
       account: { type: "string" },
       "from-company": { type: "boolean", default: false },
