@@ -38,7 +38,7 @@ Examples:
   tfa-cli agent update <agent> sysmsg="You are a terse video editor."
   tfa-cli agent create name=Reviewer model=claude sysmsg="Review diffs only."
 
-  tfa-cli agent update <agent> judgeSysmsg="Ask only before dangerous commands."   (auto-approve policy)
+  tfa-cli agent update <agent> judgeSysmsg="Ask before destructive actions. Everything else can run."   (auto-approve policy)
 
 From an agent shell (dst_ token) permissions, judgeSysmsg, edgesMcpConfigs, devicesConfig and delete are refused by the backend.
 `);
