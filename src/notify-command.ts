@@ -29,15 +29,17 @@ export function printNotifyHelp() {
 tfa-cli notify — leave a note in someone's Messages inbox (+ phone push)
 
 Usage:
-  tfa-cli notify "Title" "message" [--href /t/<todo-id>] [--subject <key>] [--json]
+  tfa-cli notify "Title" "message" [--href /t/<todo-id>] [--url <link>] [--subject <key>] [--json]
   tfa-cli notify --to <email> "Title" "message" [--project <id>]
   echo "message" | tfa-cli notify "Title"
 
 Recipient: your own user by default. --to <email> reaches a TEAMMATE: someone who is a member
 of the current project (--project, $TODOFORAI_PROJECT_ID or your default), shown as from you.
 Anyone else is refused. List them with: tfa-cli project members
---subject dedupes: the same subject is delivered once (default: hash of title+message,
+--subject dedupes: the same subject is delivered once (default: hash of title+message+url,
 so a retry never double-notifies). --href must be an in-app path.
+--url is what tapping the phone notification opens (https/tel/sms/mailto), e.g. navigation:
+  --url "https://www.google.com/maps/dir/?api=1&destination=Deák+tér&dir_action=navigate"
 Limits: 10 notes/day to yourself, 20/day to teammates.
 `);
 }
@@ -98,8 +100,8 @@ export async function notifyCommand(api: ApiClient, positionals: string[], args:
   const [, title, ...rest] = positionals;
   const message = rest.join(" ") || (process.stdin.isTTY ? "" : (await readStdin()).trim());
   if (!title || !message) { printNotifyHelp(); process.exit(2); }
-  const subject = (args.subject as string) || createHash("sha256").update(`${title}\n${message}`).digest("hex").slice(0, 16);
-  const msg = { subject, title, message, ...(args.href ? { href: String(args.href) } : {}) };
+  const subject = (args.subject as string) || createHash("sha256").update(`${title}\n${message}${args.url ? `\n${args.url}` : ""}`).digest("hex").slice(0, 16);
+  const msg = { subject, title, message, ...(args.href ? { href: String(args.href) } : {}), ...(args.url ? { url: String(args.url) } : {}) };
   const row = await (to ? api.sendMemberMessage({ ...msg, projectId: projectId!, to }) : api.sendFeedMessage(msg)) as FeedEvent & { created: boolean };
   if (args.json) { console.log(JSON.stringify(row)); return; }
   process.stderr.write(row.created !== false
