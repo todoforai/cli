@@ -41,7 +41,7 @@ import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { inboxCommand, notifyCommand, printInboxHelp, printNotifyHelp } from "./notify-command";
 import { importCommand, printImportHelp } from "./import-command";
 import { memoryCommand, printMemoryHelp } from "./memory-command";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
 
@@ -621,7 +621,19 @@ async function main() {
     }
     // Hand the raw post-`list` argv to the subcommand for its own parsing.
     const sub = process.argv.slice(process.argv.indexOf(positionals[0]) + 1);
-    await listTodosCommand(api, defaultProjectId ?? undefined, sub);
+    // Caller's user id for the default "mine" filter: env in agent shells, else
+    // cached per token fingerprint (one validate call on first use / token rotation).
+    const tokenFp = createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+    const resolveUserId = async () => {
+      const envId = getEnv("USER_ID");
+      if (envId) return envId;
+      const cached = cfgScope.cachedUserId(tokenFp);
+      if (cached) return cached;
+      const v = await api.validateApiKey();
+      if (v.userId) cfgScope.setUserId(v.userId, tokenFp);
+      return v.userId;
+    };
+    await listTodosCommand(api, defaultProjectId ?? undefined, sub, resolveUserId);
     return;
   }
 

@@ -32,6 +32,9 @@ export interface ApiUrlScope {
   recent_projects: { id: string; name: string }[];
   recent_agents: string[];
   last_todo_id: string | null;
+  /** Caller's user id, cached per token fingerprint so `list` needs no extra request. */
+  user_id?: string | null;
+  user_id_token_fp?: string | null;
 }
 
 export interface ConfigData {
@@ -162,6 +165,19 @@ export class ScopedConfig {
     s.default_project_id = id;
     s.default_project_name = name || id;
     s.recent_projects = [{ id, name: name || id }, ...s.recent_projects.filter((p) => p.id !== id)].slice(0, 10);
+    this.store.save();
+  }
+
+  /** Cached user id for this token, or null when unknown/stale. */
+  cachedUserId(tokenFp: string): string | null {
+    const s = this.data;
+    return s.user_id && s.user_id_token_fp === tokenFp ? s.user_id : null;
+  }
+
+  setUserId(id: string, tokenFp: string): void {
+    const s = this.data;
+    s.user_id = id;
+    s.user_id_token_fp = tokenFp;
     this.store.save();
   }
 

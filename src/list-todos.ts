@@ -27,19 +27,22 @@ const isOpen = (s: string) => !CLOSED.has(s);
 
 export function printListTodosHelp() {
   process.stderr.write(`
-todoforai-cli list — list todos in a project (recent first)
+todoforai-cli list — list YOUR todos in a project (recent first)
+
+Default: only todos you opened or wrote in. --project-wide shows everyone's.
 
 Usage:
   todoforai-cli list [flags]
 
 Flags:
+      --project-wide       Every member's todos, not just yours
   -n, --limit <n>          Max rows to show (default: 30)
       --cursor <n>         Fetch todos older than this cursor (sort field, epoch ms)
       --since <t>          Only todos with sort field >= t (inclusive)
       --until <t>          Only todos with sort field < t (exclusive)
                            t = epoch ms | YYYY-MM-DD (local midnight) | ISO datetime | 12h / 3d ago
       --sort <key>         activity (lastActivityAt, default) | created (createdAt)
-      --contributor <u>    Only todos a member opened/wrote in (id or email; comma = any)
+      --contributor <u>    Only todos a member opened/wrote in (id or email; comma = any; replaces the "mine" default)
       --page-size <n>      Backend page size per request (default: min(limit, 400), max: 400)
       --search <text>      Search content/status on the backend
   -s, --status <S[,S2]>    Filter by status (comma-separated, union).
@@ -49,7 +52,8 @@ Flags:
   -h, --help               Show this help
 
 Examples:
-  todoforai-cli list                         # 30 most recent open todos
+  todoforai-cli list                         # 30 most recent open todos of yours
+  todoforai-cli list --project-wide          # … of everyone in the project
   todoforai-cli list -n 50                   # last 50 open
   todoforai-cli list --cursor 1719234567890  # next page
   todoforai-cli list --all                   # include DONE
@@ -134,7 +138,11 @@ function matchesRequestedStatus(t: any, requested: string[] | null, wanted: Set<
   return (wantOpen && isOpen(s)) || (wanted?.has(s) ?? false);
 }
 
-export async function listTodosCommand(api: any, defaultProjectId: string | undefined, argv: string[]) {
+export async function listTodosCommand(
+  api: any, defaultProjectId: string | undefined, argv: string[],
+  /** Caller's user id; drives the default "mine" filter. Unresolvable → project-wide. */
+  resolveUserId?: () => Promise<string | undefined>,
+) {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -146,6 +154,7 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
       until:      { type: "string" },
       sort:       { type: "string" },
       contributor: { type: "string" },
+      "project-wide": { type: "boolean", default: false },
       status:     { type: "string",  short: "s" },
       all:        { type: "boolean", short: "A", default: false },
       project:    { type: "string" },
@@ -173,9 +182,14 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
   let cursor = cursorValue(values.cursor);
   if (until !== undefined) cursor = cursor === undefined ? until : Math.min(cursor, until);
   const search = values.search ? String(values.search) : undefined;
-  const contributorIds = values.contributor
+  let contributorIds = values.contributor
     ? await resolveContributors(api, projectId, String(values.contributor))
     : undefined;
+  let mineOnly = false;
+  if (!contributorIds && !values["project-wide"] && resolveUserId) {
+    const me = await resolveUserId();
+    if (me) { contributorIds = [me]; mineOnly = true; }
+  }
 
   // Parse --status. "OPEN" is a pseudo-status meaning "any non-closed". Unknown
   // statuses fall back to OPEN (so a typo/legacy value shows the open list, not nothing).
@@ -237,8 +251,9 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
     return;
   }
 
+  const scopeHint = mineOnly ? " of yours (--project-wide for everyone's)" : "";
   if (!visible.length) {
-    process.stderr.write(`${DIM}(no todos)${RESET}\n`);
+    process.stderr.write(`${DIM}(no todos${scopeHint})${RESET}\n`);
     if (nextCursor !== undefined) process.stderr.write(`${DIM}Next cursor: ${nextCursor} (re-run with the same filters plus --cursor ${nextCursor})${RESET}\n`);
     return;
   }
@@ -251,6 +266,6 @@ export async function listTodosCommand(api: any, defaultProjectId: string | unde
     const title = String(t.content ?? "").split("\n")[0].slice(0, 100);
     process.stdout.write(`${sc}${status.padEnd(statusW)}${RESET}  ${DIM}${ts}${RESET}  ${t.id}  ${title}\n`);
   }
-  process.stderr.write(`${DIM}${visible.length} todo(s)${RESET}\n`);
+  process.stderr.write(`${DIM}${visible.length} todo(s)${scopeHint}${RESET}\n`);
   if (nextCursor !== undefined) process.stderr.write(`${DIM}Next cursor: ${nextCursor} (re-run with the same filters plus --cursor ${nextCursor})${RESET}\n`);
 }
