@@ -38,7 +38,6 @@ Examples:
   tfa-cli agent update <agent> sysmsg="You are a terse video editor."
   tfa-cli agent create name=Reviewer model=claude sysmsg="Review diffs only."
 
-Approvals (judgeSysmsg) can't be set from the CLI: change them in the web app.
 From an agent shell (dst_ token) permissions, edgesMcpConfigs, devicesConfig and delete are refused by the backend.
 `);
 }
@@ -61,14 +60,14 @@ export function parseAssignment(arg: string, aliases: Record<string, string> = {
   try { return [key, JSON.parse(raw)]; } catch { return [key, raw]; }
 }
 
-/** Fields only a human sets, in the web app: an agent running tfa-cli must not lift its own approval checker. */
+/** Set only by a human in the web app: an agent running tfa-cli must not lift its own approval checker. */
 const CLI_DENIED_FIELDS = new Set(["judgeSysmsg"]);
 
 export function parseAssignments(args: string[], aliases: Record<string, string> = {}): Record<string, any> {
   const out = Object.fromEntries(args.map((a) => parseAssignment(a, aliases)));
   const denied = Object.keys(out).filter((k) => CLI_DENIED_FIELDS.has(k));
   if (denied.length) {
-    process.stderr.write(`${RED}${denied.join(", ")} can't be set from the CLI. Change approvals in the web app (agent settings → Approvals).${RESET}\n`);
+    process.stderr.write(`${RED}Unknown field: ${denied.join(", ")}${RESET}\n`);
     process.exit(2);
   }
   return out;
