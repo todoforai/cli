@@ -37,7 +37,7 @@ Examples:
   tfa-cli delete <todo-id>              # Permanently delete a todo
   tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
   tfa-cli show <file|-> [todo-id]     # Render a local file (image/pdf/html…) in the chat; - = stdin
-  tfa-cli show list|rm …              # List / take down shown files
+  tfa-cli show list|ref|rm …          # List / re-surface / take down shown files
   tfa-cli open <url> [todo-id]        # Live url preview in the chat
   tfa-cli connect <key>… [--reason "why"]  # Sign-in card for connectors on this machine (several keys = one choice)
   tfa-cli recommend --template <id>    # Add a template as a recommendation card
@@ -93,6 +93,7 @@ Usage:
                                       Re-showing with the same --alias updates the block in place (new version)
                                       --alias <todoId>:<alias> updates that todo's block instead,
                                       so a later chat can revise an artifact made elsewhere
+  tfa-cli show ref <ref|alias> [todo-id]  Re-post an artifact (any todo) at the chat bottom, live
   tfa-cli show share <ref|alias>      Make it public; prints its link (serves the latest version)
   tfa-cli show unshare <ref|alias>    Make it private again (the link stops working)
   tfa-cli show rm <ref|alias>         Take it down (block, link, every version)
@@ -114,6 +115,7 @@ When to use what:
   read once, move on             → plain chat reply
   interactive, this chat only    → html_snippet (can exec/connect/chat back)
   keep / revise later            → show <file> --alias <name>  (versioned, private)
+  bring it back up later         → show ref <alias>
   someone outside needs it       → show share <alias>  (public link, revocable)
   a live web page                → open <url>
   a format the user asked for    → show the file (pptx, docx, xlsx, pdf…)

@@ -395,7 +395,7 @@ async function main() {
       return;
     }
     for (const it of items) {
-      const kind = it.url ? `url ${it.url}` : (it.mime || "");
+      const kind = it.url ? `url ${it.url}` : it.target ? `→ ${it.target}` : (it.mime || "");
       const card = it.cardRef ? ` card=${it.cardRef}` : "";
       const link = it.display === "link" ? " link" : "";
       const shared = it.shareUrl ? `  ${it.shareUrl}` : "";
@@ -410,6 +410,16 @@ async function main() {
   //   share    make it public (prints the url)
   //   unshare  make it private again
   const showSub = positionals[1];
+  // show ref <ref|alias> [todo-id]: re-post a show block (any todo) live at the chat bottom.
+  if (positionals[0] === "show" && showSub === "ref") {
+    const [, , ref, todoArg] = positionals;
+    const here = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    if (!ref || !here) { process.stderr.write(`${RED}Usage: tfa-cli show ref <ref|alias> [todo-id]${RESET}\n`); process.exit(2); }
+    const res = await api.showRef(here, ref);
+    if (args.json) console.log(JSON.stringify(res, null, 2));
+    else console.log(res.ref);
+    return;
+  }
   if (positionals[0] === "show" && (showSub === "rm" || showSub === "share" || showSub === "unshare")) {
     const arg = positionals[2];
     if (!arg) { process.stderr.write(`${RED}Usage: tfa-cli show ${showSub} <ref|alias>${RESET}\n`); process.exit(2); }
