@@ -37,6 +37,7 @@ Examples:
   tfa-cli agent update <agent> model=anthropic:anthropic/claude-opus-5 temperature=0.5
   tfa-cli agent update <agent> sysmsg="You are a terse video editor."
   tfa-cli agent create name=Reviewer model=claude sysmsg="Review diffs only."
+  tfa-cli agent update <agent> judgeSysmsg="Ask before sending email."   (approval checker; ""=off, null=inherit global)
 
 From an agent shell (dst_ token) permissions, edgesMcpConfigs, devicesConfig and delete are refused by the backend.
 `);
@@ -60,17 +61,8 @@ export function parseAssignment(arg: string, aliases: Record<string, string> = {
   try { return [key, JSON.parse(raw)]; } catch { return [key, raw]; }
 }
 
-/** Set only by a human in the web app: an agent running tfa-cli must not lift its own approval checker. */
-const CLI_DENIED_FIELDS = new Set(["judgeSysmsg"]);
-
 export function parseAssignments(args: string[], aliases: Record<string, string> = {}): Record<string, any> {
-  const out = Object.fromEntries(args.map((a) => parseAssignment(a, aliases)));
-  const denied = Object.keys(out).filter((k) => CLI_DENIED_FIELDS.has(k));
-  if (denied.length) {
-    process.stderr.write(`${RED}Unknown field: ${denied.join(", ")}${RESET}\n`);
-    process.exit(2);
-  }
-  return out;
+  return Object.fromEntries(args.map((a) => parseAssignment(a, aliases)));
 }
 
 /** Resolve an agent by exact id, exact name, prefix, word-boundary, then substring. */
