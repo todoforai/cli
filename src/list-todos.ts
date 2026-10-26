@@ -27,40 +27,26 @@ const isOpen = (s: string) => !CLOSED.has(s);
 
 export function printListTodosHelp() {
   process.stderr.write(`
-todoforai-cli list — list YOUR todos in a project (recent first)
+todoforai-cli list [flags] — todos of a project, newest first (lastActivityAt)
 
-Default: only todos you opened or wrote in. --project-wide shows everyone's.
+Scope:  yours only (todos you opened or wrote in) → --project-wide = every member's
+        open only (hides DONE, ARCHIVED, DELETED)  → -A / --all = closed too
+Output: STATUS  YYYY-MM-DD HH:MM  <todoId>  <first line of content>
+        --json → { items: [{ id, status, content, lastActivityAt, createdAt, contributorIds, … }], nextCursor }
 
-Usage:
-  todoforai-cli list [flags]
+Filters (all combinable):
+  -s, --status <S,S2>    exact statuses, union (closed ones included); OPEN = any non-closed
+      --search <text>    content/status substring (backend)
+      --contributor <u>  id or email, comma = any; replaces the "yours" default
+      --since/--until <t> window on the sort field: epoch ms | YYYY-MM-DD | ISO | 12h / 3d (ago)
+      --sort created     by createdAt instead of activity
+      --project <id>     other project (default: the current one)
 
-Flags:
-      --project-wide       Every member's todos, not just yours
-  -n, --limit <n>          Max rows to show (default: 30)
-      --cursor <n>         Fetch todos older than this cursor (sort field, epoch ms)
-      --since <t>          Only todos with sort field >= t (inclusive)
-      --until <t>          Only todos with sort field < t (exclusive)
-                           t = epoch ms | YYYY-MM-DD (local midnight) | ISO datetime | 12h / 3d ago
-      --sort <key>         activity (lastActivityAt, default) | created (createdAt)
-      --contributor <u>    Only todos a member opened/wrote in (id or email; comma = any; replaces the "mine" default)
-      --page-size <n>      Backend page size per request (default: min(limit, 400), max: 400)
-      --search <text>      Search content/status on the backend
-  -s, --status <S[,S2]>    Filter by status (comma-separated, union).
-  -A, --all                Include closed (DONE, ARCHIVED, DELETED)
-      --project <id>       Project ID (default: current default project)
-      --json               Output { items, nextCursor } as JSON
-  -h, --help               Show this help
+Paging: -n <limit> (default 30). "Next cursor: N" on stderr / nextCursor in JSON → re-run with --cursor N.
 
 Examples:
-  todoforai-cli list                         # 30 most recent open todos of yours
-  todoforai-cli list --project-wide          # … of everyone in the project
-  todoforai-cli list -n 50                   # last 50 open
-  todoforai-cli list --cursor 1719234567890  # next page
-  todoforai-cli list --all                   # include DONE
   todoforai-cli list -s RUNNING,REVIEW_REQUESTED
-  todoforai-cli list -A --since 2026-10-11 --until 2026-10-12   # touched that day
-  todoforai-cli list -A --sort created --since 7d --contributor a@b.com
-  todoforai-cli list --search bug --json | jq '.items[].id'
+  todoforai-cli list --project-wide -A --since 7d --json | jq -r '.items[] | [.id, .status] | @tsv'
 `);
 }
 
