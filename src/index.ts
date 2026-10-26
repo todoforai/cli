@@ -510,6 +510,18 @@ async function main() {
     return;
   }
 
+  if (positionals[0] === "ignore") {
+    // The dispatcher's third outcome: not a row, but not silently gone either.
+    const title = (args.title as string | undefined)?.trim();
+    if (!title) { process.stderr.write(`${RED}Usage: tfa-cli ignore --title "..." [--source "label|ref|url|from"] [--note "why"] [--project <id>]${RESET}\n`); process.exit(2); }
+    const source = args.source ? (() => { const [label, ref, url, from] = String(args.source).split("|"); return label && ref ? { label, ref, ...(url ? { url } : {}), ...(from ? { from } : {}) } : undefined; })() : undefined;
+    const projectId = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
+    if (!projectId) { process.stderr.write(`${RED}No project found — pass --project <id>${RESET}\n`); process.exit(2); }
+    await api.feedIgnore({ projectId, title, ...(source ? { source } : {}), ...(args.note ? { why: args.note as string } : {}) });
+    process.stderr.write(`${DIM}ignored: ${title}${RESET}\n`);
+    return;
+  }
+
   if (positionals[0] === "recommend") {
     // Reference an existing registry template as a recommendation card on a project.
     // Templates are created by `todoregistry-cli create` (which prints the id).

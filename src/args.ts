@@ -41,6 +41,7 @@ Examples:
   tfa-cli open <url> [todo-id]        # Live url preview in the chat
   tfa-cli connect <key>… [--reason "why"]  # Sign-in card for connectors on this machine (several keys = one choice)
   tfa-cli recommend --template <id> | --title "…" [--info] [--source "label|ref|url"]  # ✧ proposal card, or an ⓘ info row
+  tfa-cli ignore --title "…" [--source "label|ref|url|from"] [--note "why"]  # Log an inbound item as noise (folded under the Feed card)
   tfa-cli inbox [needs-you|messages|activity] [--unread]  # Read the notification feed (the bell)
   tfa-cli inbox seen [tab]              # Mark notifications read
   tfa-cli notify [--to <email>] "Title" "message" [--href /t/<id>] [--url <link>]  # Note to your own user, or --to a project member (Messages tab + phone push)
