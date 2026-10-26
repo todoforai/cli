@@ -29,7 +29,7 @@ export function printListTodosHelp() {
   process.stderr.write(`
 todoforai-cli list [flags] — todos of a project, newest first (lastActivityAt)
 
-Scope:  yours only (todos you opened or wrote in) → --project-wide = every member's
+Scope:  yours only (todos you opened or wrote in) → --contributor all = every member's
         open only (hides DONE, ARCHIVED, DELETED)  → -A / --all = closed too
 Output: STATUS  YYYY-MM-DD HH:MM  <todoId>  <first line of content>
         --json → { items: [{ id, status, content, lastActivityAt, createdAt, contributorIds, … }], nextCursor }
@@ -37,7 +37,7 @@ Output: STATUS  YYYY-MM-DD HH:MM  <todoId>  <first line of content>
 Filters (all combinable):
   -s, --status <S,S2>    exact statuses, union (closed ones included); OPEN = any non-closed
       --search <text>    content/status substring (backend)
-      --contributor <u>  id or email, comma = any; replaces the "yours" default
+      --contributor <u>  id or email, comma = any; "all" = no filter (default: you)
       --since/--until <t> window on the sort field: epoch ms | YYYY-MM-DD | ISO | 12h / 3d (ago)
       --sort created     by createdAt instead of activity
       --project <id>     other project (default: the current one)
@@ -46,7 +46,7 @@ Paging: -n <limit> (default 30). "Next cursor: N" on stderr / nextCursor in JSON
 
 Examples:
   todoforai-cli list -s RUNNING,REVIEW_REQUESTED
-  todoforai-cli list --project-wide -A --since 7d --json | jq -r '.items[] | [.id, .status] | @tsv'
+  todoforai-cli list --contributor all -A --since 7d --json | jq -r '.items[] | [.id, .status] | @tsv'
 `);
 }
 
@@ -126,7 +126,7 @@ function matchesRequestedStatus(t: any, requested: string[] | null, wanted: Set<
 
 export async function listTodosCommand(
   api: any, defaultProjectId: string | undefined, argv: string[],
-  /** Caller's user id; drives the default "mine" filter. Unresolvable → project-wide. */
+  /** Caller's user id; drives the default "mine" filter. Unresolvable → everyone's. */
   resolveUserId?: () => Promise<string | undefined>,
 ) {
   const { values } = parseArgs({
@@ -140,7 +140,6 @@ export async function listTodosCommand(
       until:      { type: "string" },
       sort:       { type: "string" },
       contributor: { type: "string" },
-      "project-wide": { type: "boolean", default: false },
       status:     { type: "string",  short: "s" },
       all:        { type: "boolean", short: "A", default: false },
       project:    { type: "string" },
@@ -168,11 +167,13 @@ export async function listTodosCommand(
   let cursor = cursorValue(values.cursor);
   if (until !== undefined) cursor = cursor === undefined ? until : Math.min(cursor, until);
   const search = values.search ? String(values.search) : undefined;
-  let contributorIds = values.contributor
-    ? await resolveContributors(api, projectId, String(values.contributor))
+  const contributorArg = values.contributor === undefined ? undefined : String(values.contributor);
+  const everyone = contributorArg?.trim().toLowerCase() === "all";
+  let contributorIds = contributorArg && !everyone
+    ? await resolveContributors(api, projectId, contributorArg)
     : undefined;
   let mineOnly = false;
-  if (!contributorIds && !values["project-wide"] && resolveUserId) {
+  if (!contributorIds && !everyone && resolveUserId) {
     const me = await resolveUserId();
     if (me) { contributorIds = [me]; mineOnly = true; }
   }
@@ -237,7 +238,7 @@ export async function listTodosCommand(
     return;
   }
 
-  const scopeHint = mineOnly ? " of yours (--project-wide for everyone's)" : "";
+  const scopeHint = mineOnly ? " of yours (--contributor all for everyone's)" : "";
   if (!visible.length) {
     process.stderr.write(`${DIM}(no todos${scopeHint})${RESET}\n`);
     if (nextCursor !== undefined) process.stderr.write(`${DIM}Next cursor: ${nextCursor} (re-run with the same filters plus --cursor ${nextCursor})${RESET}\n`);
