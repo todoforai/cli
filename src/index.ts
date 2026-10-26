@@ -542,7 +542,13 @@ async function main() {
     }
     const rec = await api.recommend({
       projectId,
-      ...(templateId ? { specId: templateId } : { template: { name: inlineTitle as string, body: (args.note as string) || inlineTitle as string } }),
+      // Inline spec: name = the row's title; description = the note (buildContent prints
+      // name + description, so the title isn't repeated); body = what the agent is told on accept.
+      ...(templateId ? { specId: templateId } : { template: {
+        name: inlineTitle as string,
+        description: (args.note as string) || (source ? `From ${source.label}` : inlineTitle as string),
+        body: `Handle this item: ${inlineTitle}${args.note ? `\n\n${args.note}` : ""}${source?.url ? `\n\nOriginal: ${source.url}` : ""}`,
+      } }),
       ...(args.info ? { todoKind: "info" as const } : {}),
       ...(source ? { source } : {}),
       ...(args.title ? { title: args.title as string } : {}),
