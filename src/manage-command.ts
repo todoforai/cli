@@ -23,6 +23,7 @@ Fields (PUT /todos/{id}):
   schedule         unix ms timestamp, 0 = immediate (alias: scheduledTimestamp)
   agent            agentSettingsId (alias: agentSettingsId)
   public           true|false — refused from an agent shell (isPublic)
+  kind             task|info — promote an ⓘ info row to a task (or back)
 
   tfa-cli todo message <todo-id|-> <message-id> <field=value>…
                    Edit a SCHEDULED (not yet run) message: content, schedule (unix ms;
