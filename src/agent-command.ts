@@ -38,8 +38,9 @@ Examples:
   tfa-cli agent update <agent> sysmsg="You are a terse video editor."
   tfa-cli agent create name=Reviewer model=claude sysmsg="Review diffs only."
   tfa-cli agent update <agent> judgeSysmsg="Ask before sending email."   (approval checker; ""=off, null=inherit global)
+  tfa-cli agent update <agent> permissions='{"allow":[…],"ask":[…],"deny":[…]}'   (replaces all three lists; read them with get --json first)
 
-From an agent shell (dst_ token) permissions, edgesMcpConfigs, devicesConfig and delete are refused by the backend.
+From an agent shell (dst_ token) edgesMcpConfigs, devicesConfig, toolProfiles and delete are refused by the backend.
 `);
 }
 
