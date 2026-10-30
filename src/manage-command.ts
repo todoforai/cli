@@ -65,7 +65,6 @@ Usage:
                                                    A note (markdown, "- [ ]" lines are checkboxes). Seen by
                                                    whoever sees where it sits: standalone = the project,
                                                    group = its members, your My Private group = only you.
-                                                   Notes in a group join every todo's agent context there.
   tfa-cli project surfaces rm <id>                 Take it off the board
 
 Examples:
