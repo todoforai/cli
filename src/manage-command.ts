@@ -56,8 +56,8 @@ Usage:
   tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
                                                    Public intake: autoStart maxSubmissions postIpLimit placeholder agentSettingsId
   tfa-cli project groups reorder <slug>…           Set wall order
-  tfa-cli project surfaces                         List the board's card surfaces (live refs shown as cards)
-  tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [order=N]
+  tfa-cli project surfaces                         List the board's cards you can see: id, title, ref|note, group, color
+  tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [color=#hex] [order=N]
                                                    Show a ref on the board: a todo id, <todoId>:<alias>
                                                    (shown artifact) or an http(s) url. group= puts it
                                                    inside that group's card; group="" makes it standalone.
@@ -217,12 +217,14 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
     if (!verb) {
       const surfaces = await api.listProjectSurfaces(projectId);
       if (args.json) { console.log(JSON.stringify(surfaces, null, 2)); return; }
-      for (const s of surfaces) process.stderr.write(`${s.id}  ${s.ref ?? "(note)"}  ${DIM}${[s.title, s.group && `in ${s.group}`].filter(Boolean).join("  ")}${RESET}\n`);
+      // A note's title is usually its first line.
+      const titleOf = (s: any) => s.title || (s.body ?? "").split("\n").find((l: string) => l.trim())?.trim().slice(0, 60) || "";
+      for (const s of surfaces) process.stderr.write(`${s.id}  ${titleOf(s)}  ${DIM}${[s.ref ?? "note", s.group && `in ${s.group}`, s.color].filter(Boolean).join("  ")}${RESET}\n`);
       return;
     }
     if (verb === "set") {
       const [id, ...fields] = sargs;
-      if (!id) fail("Usage: tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [order=N]");
+      if (!id) fail("Usage: tfa-cli project surfaces set <id> [ref=<ref>|body=…] [title=…] [group=<slug>] [color=#hex] [order=N]");
       const surface = await api.upsertProjectSurface(projectId, id, parseAssignments(fields));
       if (args.json) { console.log(JSON.stringify(surface, null, 2)); return; }
       process.stderr.write(`${GREEN}✅ surface ${id} ${surface.ref ? `shows ${surface.ref}` : "is a note"}${surface.group ? ` in ${surface.group}` : ""}${RESET}\n`);
