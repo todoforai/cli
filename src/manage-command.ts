@@ -62,7 +62,7 @@ Usage:
                                                    (shown artifact) or an http(s) url. group= puts it
                                                    inside that group's card; group="" makes it standalone.
   tfa-cli project surfaces set <id> body="…" [group=<slug>] [color=#hex]
-                                                   A note (markdown, "- [ ]" lines are checkboxes). Seen by
+                                                   A note (markdown text). Seen by
                                                    whoever sees where it sits: standalone = the project,
                                                    group = its members, your My Private group = only you.
   tfa-cli project surfaces rm <id>                 Take it off the board
