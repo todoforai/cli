@@ -46,7 +46,7 @@ tfa-cli project — edit the current project
 Usage:
   tfa-cli project list                             Projects you can access (* = default)
   tfa-cli project members                          Who is on it (notify --to <email> reaches them)
-  tfa-cli project set <field=value>…               name=… description=…
+  tfa-cli project set <field=value>…               name=… description=… logo=<https image url|"">
                                                     (isPublic refused from an agent shell)
   tfa-cli project default                          Make it the project you land on at /
   tfa-cli project agent <agent>                    Default agent for new todos in this project
