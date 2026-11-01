@@ -129,8 +129,8 @@ const STATUS_HELP: Partial<Record<TodoStatus, string>> = {
   [TodoStatus.READY_CHECKED]: "AI finished and the user reviewed it",
   [TodoStatus.DONE]: "Completed and finalized",
   [TodoStatus.REVIEW_REQUESTED]: "Asks the user to review",
-  [TodoStatus.CANCELLED]: "Stop a running TODO (= Stop button); settles to CANCELLED",
-  [TodoStatus.POSTPONED]: "Shelve an idle TODO for later",
+  [TodoStatus.CANCELLED]: "Stop a running TODO",
+  [TodoStatus.POSTPONED]: "Put off for later",
   [TodoStatus.ARCHIVED]: "Archived (hidden from active list)",
   [TodoStatus.DELETED]: "Marked for deletion",
 };
