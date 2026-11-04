@@ -14,6 +14,9 @@ tfa-cli todo — edit a todo's fields
 
 Usage:
   tfa-cli todo set <todo-id|-> <field=value>…   Update fields ("-" = $TODOFORAI_TODO_ID)
+  tfa-cli todo note <todo-id|-> "text"          Add a team note: why it's on the board, where it
+                                                stands (the team sees it, the agent never does)
+  tfa-cli todo notes <todo-id|->                List its notes
   tfa-cli todo restore <todo-id>                Bring a trashed todo back (undo of 'delete')
 
 Fields (PUT /todos/{id}):
@@ -24,6 +27,8 @@ Fields (PUT /todos/{id}):
   agent            agentSettingsId (alias: agentSettingsId)
   public           true|false — refused from an agent shell (isPublic)
   kind             task|info — promote an ⓘ info row to a task (or back)
+  deadline         YYYY-MM-DD (whole day) or "YYYY-MM-DD HH:MM" (local time); "" clears (alias: end)
+  start            YYYY-MM-DD planned start; "" clears
 
   tfa-cli todo message <todo-id|-> <message-id> <field=value>…
                    Edit a SCHEDULED (not yet run) message: content, schedule (unix ms;
@@ -32,6 +37,8 @@ Fields (PUT /todos/{id}):
 Examples:
   tfa-cli todo set - title="Ship v2 landing" group=marketing
   tfa-cli todo set 3f2a91 star=true
+  tfa-cli todo set - deadline=2026-11-20 start=2026-11-10
+  tfa-cli todo note - "Asked by Gábor; waits for the Q3 numbers"
   tfa-cli todo message - 8c1d… schedule=1760000000000
   tfa-cli status <todo-id> DONE                  (status has its own command)
 `);
@@ -82,7 +89,28 @@ const TODO_ALIASES: Record<string, string> = {
   schedule: "scheduledTimestamp",
   agent: "agentSettingsId",
   public: "isPublic",
+  deadline: "endDate",
+  end: "endDate",
+  start: "startDate",
 };
+
+/** YYYY-MM-DD → its UTC midnight (a calendar day, the same for every timezone); "" / 0 clears. */
+function parseDay(value: unknown, field: string): number {
+  if (value === "" || value === 0) return 0;
+  if (typeof value === "number") return value;
+  const day = String(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(day))) fail(`${field} must be YYYY-MM-DD`);
+  return Date.parse(day);
+}
+
+/** Whole day, or a day + HH:MM in local time (an exact moment: endTimed). */
+function parseDeadline(value: unknown): { endDate: number; endTimed?: boolean } {
+  const timed = typeof value === "string" && value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/);
+  if (!timed) return { endDate: parseDay(value, "deadline"), endTimed: false };
+  const at = new Date(`${timed[1]}T${timed[2]}`).getTime();
+  if (Number.isNaN(at)) fail('deadline must be YYYY-MM-DD or "YYYY-MM-DD HH:MM"');
+  return { endDate: at, endTimed: true };
+}
 
 const NO_PROJECT = "No project — pass --project <id> or set TODOFORAI_PROJECT_ID";
 
@@ -111,6 +139,25 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     process.stderr.write(`${GREEN}✅ message ${messageId} updated: ${Object.keys(updates).join(", ")}${RESET}\n`);
     return;
   }
+  if (sub === "note") {
+    const content = rest.join(" ").trim();
+    if (!todoId || !content) fail('Usage: tfa-cli todo note <todo-id|-> "text"');
+    const note = await api.addComment(todoId, content);
+    if (args.json) { console.log(JSON.stringify(note)); return; }
+    process.stderr.write(`${GREEN}✅ note added to ${todoId}${RESET}
+`);
+    return;
+  }
+  if (sub === "notes") {
+    if (!todoId) fail("Usage: tfa-cli todo notes <todo-id|->");
+    const { comments, authors } = await api.listComments(todoId);
+    const notes = comments.filter((c: any) => !c.messageId);
+    if (args.json) { console.log(JSON.stringify(notes, null, 2)); return; }
+    const name = new Map(authors.map((a: any) => [a.id, a.name]));
+    if (!notes.length) process.stderr.write(`${DIM}No notes${RESET}\n`);
+    for (const c of notes) process.stderr.write(`${DIM}${new Date(c.createdAt).toISOString().slice(0, 16).replace("T", " ")} ${name.get(c.authorId) ?? c.authorId}${c.via === "agent" ? " (agent)" : ""}${RESET}  ${c.content}\n`);
+    return;
+  }
   if (sub !== "set") { printTodoHelp(); process.exit(sub ? 2 : 0); }
   if (!todoId || !rest.length) fail("Usage: tfa-cli todo set <todo-id|-> <field=value>…");
   const updates = parseAssignments(rest, TODO_ALIASES);
@@ -119,6 +166,8 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     updates.starredAt = updates.star ? Date.now() : 0;
     delete updates.star;
   }
+  if ("startDate" in updates) updates.startDate = parseDay(updates.startDate, "start");
+  if ("endDate" in updates) Object.assign(updates, parseDeadline(updates.endDate));
   await api.updateTodo(todoId, updates);
   if (args.json) { console.log(JSON.stringify({ todoId, ...updates })); return; }
   process.stderr.write(`${GREEN}✅ ${todoId} updated: ${Object.keys(updates).join(", ")}${RESET}\n`);
