@@ -128,7 +128,7 @@ const STATUS_HELP: Partial<Record<TodoStatus, string>> = {
   [TodoStatus.READY]: "AI finished the work on the TODO",
   [TodoStatus.READY_CHECKED]: "AI finished and the user reviewed it",
   [TodoStatus.DONE]: "Completed and finalized",
-  [TodoStatus.REVIEW_REQUESTED]: "Asks the user to review",
+  [TodoStatus.REVIEW_REQUESTED]: "Hand it to a person to approve",
   [TodoStatus.CANCELLED]: "Stop a running TODO",
   [TodoStatus.ARCHIVED]: "Archived (hidden from active list)",
   [TodoStatus.DELETED]: "Marked for deletion",
@@ -142,7 +142,7 @@ Common statuses:
 ${Object.entries(STATUS_HELP).map(([s, d]) => `  ${s.padEnd(18)}${d}`).join("\n")}
 
 All valid statuses:
-  ${Object.values(TodoStatus).filter(s => s !== TodoStatus.POSTPONED).join(", ")}
+  ${Object.values(TodoStatus).join(", ")}
 `);
 }
 
