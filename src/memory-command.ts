@@ -1,4 +1,4 @@
-/** `memory` — your memory/context and the current project's, as git checkouts (history, diff, revert, push). */
+/** `memory` — your memory/context/skills and the current project's, as git checkouts (history, diff, revert, push). */
 
 import { spawnSync } from "child_process";
 import { existsSync, mkdirSync } from "fs";
@@ -8,12 +8,12 @@ import { GREEN, RED, RESET } from "./colors";
 
 export function printMemoryHelp() {
   process.stderr.write(`
-tfa-cli memory — memory and context folders as git checkouts
+tfa-cli memory — memory, context and skills folders as git checkouts
 
 Usage:
   tfa-cli memory sync [--project <id>]   Clone, or pull, into:
-      ~/.todoforai/projects/<id>/{memory,context}      the project's    (todoforai:projects/<id>/…)
-      ~/.todoforai/projects/<id>/me/{memory,context}   yours in it      (todoforai:projects/<id>/me/…)
+      ~/.todoforai/projects/<id>/{memory,context,skills}      the project's    (todoforai:projects/<id>/…)
+      ~/.todoforai/projects/<id>/me/{memory,context,skills}   yours in it      (todoforai:projects/<id>/me/…)
   tfa-cli memory path [--project <id>]   Print the checkout paths
 
 Every change to these folders is committed on the server, from any client. In a checkout
@@ -26,7 +26,7 @@ recovery, not synced.
 `);
 }
 
-const FOLDERS = ["memory", "context"];
+const FOLDERS = ["memory", "context", "skills"];
 
 /** Checkout dir → remote path, for the shared project and the user within it. */
 function checkouts(projectId?: string): [string, string][] {
