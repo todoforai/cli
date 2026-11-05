@@ -14,9 +14,9 @@ tfa-cli todo — edit a todo's fields
 
 Usage:
   tfa-cli todo set <todo-id|-> <field=value>…   Update fields ("-" = $TODOFORAI_TODO_ID)
-  tfa-cli todo note <todo-id|-> "text"          Add a team note: why it's on the board, where it
-                                                stands (the team sees it, the agent never does)
-  tfa-cli todo notes <todo-id|->                List its notes
+  tfa-cli todo comment <todo-id|-> "text"       Comment on it: why it's on the board, where it
+                                                stands (whoever sees the todo reads it, the agent never does)
+  tfa-cli todo comments <todo-id|->             List its comments
   tfa-cli todo restore <todo-id>                Bring a trashed todo back (undo of 'delete')
 
 Fields (PUT /todos/{id}):
@@ -38,7 +38,7 @@ Examples:
   tfa-cli todo set - title="Ship v2 landing" group=marketing
   tfa-cli todo set 3f2a91 star=true
   tfa-cli todo set - deadline=2026-11-20 start=2026-11-10
-  tfa-cli todo note - "Asked by Gábor; waits for the Q3 numbers"
+  tfa-cli todo comment - "Asked by Gábor; waits for the Q3 numbers"
   tfa-cli todo message - 8c1d… schedule=1760000000000
   tfa-cli status <todo-id> DONE                  (status has its own command)
 `);
@@ -139,23 +139,23 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     process.stderr.write(`${GREEN}✅ message ${messageId} updated: ${Object.keys(updates).join(", ")}${RESET}\n`);
     return;
   }
-  if (sub === "note") {
+  if (sub === "comment") {
     const content = rest.join(" ").trim();
-    if (!todoId || !content) fail('Usage: tfa-cli todo note <todo-id|-> "text"');
-    const note = await api.addComment(todoId, content);
-    if (args.json) { console.log(JSON.stringify(note)); return; }
-    process.stderr.write(`${GREEN}✅ note added to ${todoId}${RESET}
+    if (!todoId || !content) fail('Usage: tfa-cli todo comment <todo-id|-> "text"');
+    const comment = await api.addComment(todoId, content);
+    if (args.json) { console.log(JSON.stringify(comment)); return; }
+    process.stderr.write(`${GREEN}✅ commented on ${todoId}${RESET}
 `);
     return;
   }
-  if (sub === "notes") {
-    if (!todoId) fail("Usage: tfa-cli todo notes <todo-id|->");
+  if (sub === "comments") {
+    if (!todoId) fail("Usage: tfa-cli todo comments <todo-id|->");
     const { comments, authors } = await api.listComments(todoId);
-    const notes = comments.filter((c: any) => !c.messageId);
-    if (args.json) { console.log(JSON.stringify(notes, null, 2)); return; }
+    const own = comments.filter((c: any) => !c.messageId);
+    if (args.json) { console.log(JSON.stringify(own, null, 2)); return; }
     const name = new Map(authors.map((a: any) => [a.id, a.name]));
-    if (!notes.length) process.stderr.write(`${DIM}No notes${RESET}\n`);
-    for (const c of notes) process.stderr.write(`${DIM}${new Date(c.createdAt).toISOString().slice(0, 16).replace("T", " ")} ${name.get(c.authorId) ?? c.authorId}${c.via === "agent" ? " (agent)" : ""}${RESET}  ${c.content}\n`);
+    if (!own.length) process.stderr.write(`${DIM}No comments${RESET}\n`);
+    for (const c of own) process.stderr.write(`${DIM}${new Date(c.createdAt).toISOString().slice(0, 16).replace("T", " ")} ${name.get(c.authorId) ?? c.authorId}${c.via === "agent" ? " (agent)" : ""}${RESET}  ${c.content}\n`);
     return;
   }
   if (sub !== "set") { printTodoHelp(); process.exit(sub ? 2 : 0); }
