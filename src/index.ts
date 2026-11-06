@@ -316,6 +316,11 @@ async function main() {
   }
 
   const api = new ApiClient(apiUrl, apiKey, args["user-id"] as string | undefined);
+  // Every typed todo id may be short (`52614dd2`, as in `@todo:52614dd2`): one resolve
+  // roundtrip for those, none for a full id. `<id>:<alias>` refs resolve their id part.
+  const rid = async (id: string | undefined) => id && api.resolveTodoId(id);
+  const rref = async (ref: string) => { const i = ref.indexOf(":"); return i < 0 ? ref : `${await rid(ref.slice(0, i))}${ref.slice(i)}`; };
+  if (typeof args.alias === "string") args.alias = await rref(args.alias);
 
   if (args["user-id"] && args.safe) {
     process.stderr.write("Error: --safe is not supported with --user-id\n");
@@ -339,13 +344,14 @@ async function main() {
 
   // ── todo management subcommands (read-only on the bridge; no bridge spawn) ──
   if (positionals[0] === "status") {
-    const [, todoId, status] = positionals;
-    if (!todoId || !status) { printStatusHelp(); process.exit(2); }
+    const [, todoArg, status] = positionals;
+    if (!todoArg || !status) { printStatusHelp(); process.exit(2); }
+    const todoId = (await rid(todoArg))!;
     await api.updateTodoStatus(todoId, status);
     process.stderr.write(`${GREEN}✅ Status of ${todoId} set to ${status}${RESET}\n`);
     return;
   }
-  if (positionals[0] === "todo") { await todoCommand(api, positionals, args); return; }
+  if (positionals[0] === "todo") { if (positionals[2] && positionals[2] !== "-") positionals[2] = (await rid(positionals[2]))!; await todoCommand(api, positionals, args); return; }
   // Same project resolution as every other command: --project, $TODOFORAI_PROJECT_ID, configured default.
   const scopedProject = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id || undefined;
   if (positionals[0] === "project") { await projectCommand(api, positionals, args, scopedProject); return; }
@@ -356,14 +362,15 @@ async function main() {
   if (positionals[0] === "memory") { await memoryCommand(apiUrl, apiKey, positionals, scopedProject); return; }
   if (positionals[0] === "import") { await importCommand(api, positionals, args, scopedProject, cfgScope.data.default_agent_settings?.id); return; }
   if (positionals[0] === "delete") {
-    const todoId = positionals[1];
+    const todoId = await rid(positionals[1]);
     if (!todoId) { process.stderr.write(`${RED}Usage: tfa-cli delete <todo-id>${RESET}\n`); process.exit(2); }
     await api.deleteTodo(todoId);
     process.stderr.write(`${GREEN}✅ Deleted ${todoId}${RESET}\n`);
     return;
   }
   if (positionals[0] === "addmessage") {
-    const [, todoId, ...rest] = positionals;
+    const [, todoArg, ...rest] = positionals;
+    const todoId = await rid(todoArg);
     const content = rest.join(" ") || (await readStdin());
     if (!todoId || !content) { process.stderr.write(`${RED}Usage: tfa-cli addmessage <todo-id> "content"${RESET}\n`); process.exit(2); }
     const todo = await api.getTodo(todoId);
@@ -382,7 +389,7 @@ async function main() {
     // agent can find instances in other chats. Bare `show list` in an agent
     // shell still means this todo — both env vars are set there.
     const explicitProject = !!(args.project as string);
-    const todoId = positionals[2] || (!explicitProject ? (getEnv("TODO_ID") || cfgScope.data.last_todo_id) : undefined);
+    const todoId = (await rid(positionals[2])) || (!explicitProject ? (getEnv("TODO_ID") || cfgScope.data.last_todo_id) : undefined);
     const projectId = todoId ? undefined : ((args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id);
     if (!todoId && !projectId) {
       process.stderr.write(`${RED}Usage: tfa-cli show list [todo-id] [--project <id>] [--card <name>]${RESET}\n`);
@@ -413,9 +420,9 @@ async function main() {
   // show ref <ref|alias> [todo-id]: re-post a show block (any todo) live at the chat bottom.
   if (positionals[0] === "show" && showSub === "ref") {
     const [, , ref, todoArg] = positionals;
-    const here = todoArg || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    const here = (await rid(todoArg)) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
     if (!ref || !here) { process.stderr.write(`${RED}Usage: tfa-cli show ref <ref|alias> [todo-id]${RESET}\n`); process.exit(2); }
-    const res = await api.showRef(here, ref);
+    const res = await api.showRef(here, await rref(ref));
     if (args.json) console.log(JSON.stringify(res, null, 2));
     else console.log(res.ref);
     return;
@@ -424,7 +431,7 @@ async function main() {
     const arg = positionals[2];
     if (!arg) { process.stderr.write(`${RED}Usage: tfa-cli show ${showSub} <ref|alias>${RESET}\n`); process.exit(2); }
     const sep = arg.indexOf(":");
-    const todoId = sep >= 0 ? arg.slice(0, sep) : (getEnv("TODO_ID") || cfgScope.data.last_todo_id);
+    const todoId = sep >= 0 ? await rid(arg.slice(0, sep)) : (getEnv("TODO_ID") || cfgScope.data.last_todo_id);
     const key = sep >= 0 ? arg.slice(sep + 1) : arg;
     if (!todoId || !key) { process.stderr.write(`${RED}show ${showSub}: need <todoId>:<alias> (no current todo)${RESET}\n`); process.exit(2); }
     if (showSub === "rm") {
@@ -445,7 +452,7 @@ async function main() {
     const [, filePath, todoArg] = positionals;
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
-    const todoId = todoArg || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    const todoId = (await rid(todoArg)) || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
     if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--force]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
@@ -492,7 +499,7 @@ async function main() {
 
   if (positionals[0] === "open") {
     const [, url, todoArg] = positionals;
-    const todoId = todoArg || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
+    const todoId = (await rid(todoArg)) || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
     if (!url || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli open <url> [todo-id]${RESET}\n`); process.exit(2); }
     const res = await api.showUrl(todoId, url, { title: args.title, alias: args.alias });
     if (args.json) console.log(JSON.stringify(res, null, 2));
@@ -672,13 +679,13 @@ async function main() {
   if (args.inspect !== undefined) {
     const raw = String(args.inspect);
     const at = raw.indexOf("@");
-    const todoId = at < 0 ? raw : raw.slice(0, at);
+    const todoId = await rid(at < 0 ? raw : raw.slice(0, at));
     const slice = at < 0 ? undefined : raw.slice(at + 1);
     if (!todoId) {
       process.stderr.write(`${RED}Error: --inspect requires a todoId${RESET}\n`);
       process.exit(2);
     }
-    const todo = await api.getTodo(todoId);
+    const todo = await api.getTodo(todoId!);
     if (args.json) {
       let messages = todo.messages || [];
       if (slice) {
@@ -692,7 +699,7 @@ async function main() {
     }
     const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
     const format: InspectFormat = args["format-anthropic"] ? "anthropic" : "compact";
-    printFullChat(todo, getFrontendUrl(apiUrl, todoId), slice, mode, format, args.full);
+    printFullChat(todo, getFrontendUrl(apiUrl, todoId!), slice, mode, format, args.full);
     return;
   }
 
@@ -778,7 +785,7 @@ async function main() {
   // ── resume mode ──
   if (args.resume || args.continue) {
     if (!args["no-bridge"]) await ensureBridgeRunning(apiUrl, apiKey);
-    const todoId = (args.resume as string) || cfgScope.data.last_todo_id;
+    const todoId = (await rid(args.resume as string)) || cfgScope.data.last_todo_id;
     if (!todoId) { process.stderr.write("Error: No recent todo found\n"); process.exit(1); }
 
     const todo = await api.getTodo(todoId);
