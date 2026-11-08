@@ -18,6 +18,9 @@ Usage:
                                                 stands (whoever sees the todo reads it, the agent never does)
   tfa-cli todo comments <todo-id|->             List its comments
   tfa-cli todo restore <todo-id>                Bring a trashed todo back (undo of 'delete')
+  tfa-cli todo flow <todo-id|->                 Where it stands in its flow, where it can go from here
+  tfa-cli todo next <todo-id|-> ["outcome"]     Finish its step: on to the next one, or along the
+                                                route "outcome"; during its own run: when it ends
 
 Fields (PUT /todos/{id}):
   title            first-line content (alias: content)
@@ -63,6 +66,10 @@ Usage:
   tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
                                                    Public intake: autoStart maxSubmissions postIpLimit placeholder agentSettingsId
   tfa-cli project groups reorder <slug>…           Set wall order
+  tfa-cli project flows                            Flows: the order items go through the groups
+  tfa-cli project flows set "<name>" <step>…       Create/replace a flow (same name = replace). A step is a
+                                                   group slug, with routes: slug:<outcome>=<slug>[:…]
+  tfa-cli project flows rm "<name>"                Delete a flow (its todos stay where they are)
   tfa-cli project surfaces                         List the board's cards you can see: id, title, ref|note, group, color
   tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [color=#hex] [order=N]
                                                    Show a ref on the board: a todo id, <todoId>:<alias>
@@ -78,6 +85,7 @@ Examples:
   tfa-cli project set name="Q4 launch"
   tfa-cli project groups set marketing name=Marketing description="Top-of-funnel work"
   tfa-cli project groups reorder marketing sales ops
+  tfa-cli project flows set "Számlakezelés" szamlak rendezes jovahagyas:rejected=szamlak utalas
   tfa-cli project surfaces set weekly-kpis ref=$TODOFORAI_TODO_ID:kpi title="Weekly KPIs" group=marketing
   tfa-cli project surfaces set sales-rules body="Quote prices in EUR, net of VAT." group=sales
 `);
@@ -156,6 +164,26 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     const name = new Map(authors.map((a: any) => [a.id, a.name]));
     if (!own.length) process.stderr.write(`${DIM}No comments${RESET}\n`);
     for (const c of own) process.stderr.write(`${DIM}${new Date(c.createdAt).toISOString().slice(0, 16).replace("T", " ")} ${name.get(c.authorId) ?? c.authorId}${c.via === "agent" ? " (agent)" : ""}${RESET}  ${c.content}\n`);
+    return;
+  }
+  if (sub === "next") {
+    if (!todoId) fail('Usage: tfa-cli todo next <todo-id|-> ["outcome"]');
+    const outcome = rest.join(" ").trim() || undefined;
+    const r = await api.flowNext(todoId, outcome);
+    if (args.json) { console.log(JSON.stringify(r)); return; }
+    const where = r.to !== undefined ? `on to ${r.toName}` : "done: the end of its flow";
+    process.stderr.write(`${GREEN}✅ ${r.pending ? `goes ${where} when this run ends` : where}${RESET}\n`);
+    return;
+  }
+  if (sub === "flow") {
+    if (!todoId) fail("Usage: tfa-cli todo flow <todo-id|->");
+    const pos: any = await api.flowPosition(todoId);
+    if (args.json) { console.log(JSON.stringify(pos, null, 2)); return; }
+    if (!pos) { process.stderr.write(`${DIM}Not in a flow${RESET}\n`); return; }
+    const mark: Record<string, string> = { done: "✓ ", here: "▶ ", next: "" };
+    process.stderr.write(`${pos.flowName}: ${pos.steps.map((s: any) => `${mark[s.state]}${s.name}`).join(" › ")}\n`);
+    for (const m of pos.moves) process.stderr.write(`  ${m.when ? `"${m.when}"` : "done"} → ${m.toName ?? "end (done)"}${m.to ? ` ${DIM}(${m.to})${RESET}` : ""}\n`);
+    if (pos.pending !== undefined) process.stderr.write(`${DIM}picked: ${pos.pending || "done"} (goes when the run ends)${RESET}\n`);
     return;
   }
   if (sub !== "set") { printTodoHelp(); process.exit(sub ? 2 : 0); }
@@ -259,6 +287,40 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       return;
     }
     fail(`Unknown 'project groups' verb: ${verb}`);
+  }
+  if (sub === "flows") {
+    const [verb, name, ...steps] = rest;
+    const flows: any[] = await api.listFlows(projectId);
+    const matches = flows.filter((f) => f.name === name || f.id === name);
+    if (matches.length > 1) fail(`${matches.length} flows are named "${name}": use the id (tfa-cli project flows --json)`);
+    const named = matches[0];
+    if (!verb) {
+      if (args.json) { console.log(JSON.stringify(flows, null, 2)); return; }
+      for (const f of flows) {
+        const step = (s: any) => s.group + (s.routes ?? []).map((r: any) => ` ${DIM}(${r.when} → ${r.to})${RESET}`).join("");
+        process.stderr.write(`${f.name}: ${f.steps.map(step).join(" › ")}\n`);
+      }
+      if (!flows.length) process.stderr.write(`${DIM}No flows yet${RESET}\n`);
+      return;
+    }
+    if (verb === "set") {
+      if (!name || steps.length < 2) fail('Usage: tfa-cli project flows set "<name>" <step> <step>…  (step: slug, or slug:<outcome>=<slug>)');
+      const parsed = steps.map((token) => {
+        const [group, ...routes] = token.split(":");
+        return { group, ...(routes.length && { routes: routes.map((r) => { const [when, to] = r.split("="); if (!when || !to) fail(`Bad route in ${token}: write <outcome>=<slug>`); return { when, to }; }) }) };
+      });
+      const flow = await api.setFlow(projectId, { ...(named && { id: named.id }), name, steps: parsed });
+      if (args.json) { console.log(JSON.stringify(flow, null, 2)); return; }
+      process.stderr.write(`${GREEN}✅ flow "${flow.name}" ${named ? "replaced" : "created"}: ${flow.steps.map((s: any) => s.group).join(" › ")}${RESET}\n`);
+      return;
+    }
+    if (verb === "rm") {
+      if (!named) fail(`No flow "${name ?? ""}". tfa-cli project flows lists them`);
+      await api.deleteFlow(projectId, named.id);
+      process.stderr.write(`${GREEN}✅ flow "${named.name}" deleted${RESET}\n`);
+      return;
+    }
+    fail(`Unknown 'project flows' verb: ${verb}`);
   }
   if (sub === "surfaces") {
     const [verb, ...sargs] = rest;
