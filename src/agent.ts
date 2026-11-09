@@ -30,16 +30,12 @@ export function findAgentByPath(agents: any[], path: string): any | null {
 }
 
 export async function autoCreateAgent(api: ApiClient, resolvedPath: string): Promise<any> {
-  const folderName = basename(resolvedPath) || "default";
-  // An agent shell (dst_ token) may create agents but not wire or delete them, so
-  // every call would leave one more unwired agent behind.
+  // An agent shell (dst_ token) may not wire workspaces.
   if (api.apiKey.startsWith("dst_")) {
     throw new Error("an agent shell cannot bind workspaces; pass --agent <name> or create the agent in the app");
   }
-
-  // Resolve where the workspace will be wired BEFORE creating anything: an agent
-  // created first and left unwired never matches this path again, so every
-  // retry used to leave another orphan "<folder>" agent in the user's list.
+  // The CLI spawns a bridge, so prefer the local bridge device; fall back to the
+  // single legacy edge for hosts that still run the edge daemon.
   const deviceId = bridgeDeviceId(api.apiUrl);
   let edgeId: string | undefined;
   if (!deviceId) {
@@ -52,30 +48,14 @@ export async function autoCreateAgent(api: ApiClient, resolvedPath: string): Pro
     }
     edgeId = edges[0].id;
   }
-
-  const resp = await api.createAgent();
-  const agentId = resp.id || resp.agentSettingsId;
-  if (!agentId) throw new Error(`Failed to create agent: ${JSON.stringify(resp)}`);
-  const agentSettingsId = resp.agentSettingsId || agentId;
-
+  // One idempotent server call: finds or creates + names + wires, so a failed step or
+  // two concurrent launches can't leave orphan "<folder>" agents behind.
   try {
-    await api.updateAgentSettings(agentId, agentSettingsId, { name: folderName });
-    if (deviceId) {
-      await api.setAgentDeviceConfig(agentId, agentSettingsId, deviceId, { workspacePaths: [resolvedPath] });
-      resp.devicesConfig = { [deviceId]: { workspacePaths: [resolvedPath] } };
-    } else {
-      await api.setAgentEdgeMcpConfig(agentId, agentSettingsId, edgeId!, "todoai_edge", { workspacePaths: [resolvedPath] });
-      resp.edgesMcpConfigs = { [edgeId!]: { todoai_edge: { workspacePaths: [resolvedPath] } } };
-    }
-  } catch (e) {
-    await api.deleteAgentSettings(agentSettingsId).catch((d: any) => {
-      process.stderr.write(`Warning: could not remove half-created agent ${agentSettingsId}: ${d?.message ?? d}\n`);
-    });
+    const { agent } = await api.ensureAgentForWorkspace({ workspacePaths: [resolvedPath], deviceId, edgeId, name: basename(resolvedPath) || "default" });
+    return agent;
+  } catch (e: any) {
+    const m = e?.message ?? "";
+    if (/ 404 /.test(m) && !/(Device|Edge|User) not found/.test(m)) throw new Error(`this server (${api.apiUrl}) is too old to create workspace agents; update it or pass --agent <name>`);
     throw e;
   }
-
-  const matches = await api.listAgentSettings({ workspacePath: resolvedPath });
-  if (matches.length) return matches[0];
-  resp.name = folderName;
-  return resp;
 }
