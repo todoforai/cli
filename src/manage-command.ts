@@ -309,7 +309,8 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
         const [group, ...routes] = token.split(":");
         return { group, ...(routes.length && { routes: routes.map((r) => { const [when, to] = r.split("="); if (!when || !to) fail(`Bad route in ${token}: write <outcome>=<slug>`); return { when, to }; }) }) };
       });
-      const flow = await api.setFlow(projectId, { ...(named && { id: named.id }), name, steps: parsed });
+      // Addressed by id: it keeps its name.
+      const flow = await api.setFlow(projectId, { ...(named && { id: named.id }), name: named?.id === name ? named.name : name, steps: parsed });
       if (args.json) { console.log(JSON.stringify(flow, null, 2)); return; }
       process.stderr.write(`${GREEN}✅ flow "${flow.name}" ${named ? "replaced" : "created"}: ${flow.steps.map((s: any) => s.group).join(" › ")}${RESET}\n`);
       return;
