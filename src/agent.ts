@@ -31,45 +31,51 @@ export function findAgentByPath(agents: any[], path: string): any | null {
 
 export async function autoCreateAgent(api: ApiClient, resolvedPath: string): Promise<any> {
   const folderName = basename(resolvedPath) || "default";
+  // An agent shell (dst_ token) may create agents but not wire or delete them, so
+  // every call would leave one more unwired agent behind.
+  if (api.apiKey.startsWith("dst_")) {
+    throw new Error("an agent shell cannot bind workspaces; pass --agent <name> or create the agent in the app");
+  }
 
-  // 1. Create agent
+  // Resolve where the workspace will be wired BEFORE creating anything: an agent
+  // created first and left unwired never matches this path again, so every
+  // retry used to leave another orphan "<folder>" agent in the user's list.
+  const deviceId = bridgeDeviceId(api.apiUrl);
+  let edgeId: string | undefined;
+  if (!deviceId) {
+    const edges = await api.listEdges();
+    if (!Array.isArray(edges) || edges.length === 0) {
+      throw new Error("No bridge device or edge available to configure workspace path");
+    }
+    if (edges.length > 1) {
+      throw new Error("No local bridge device found and multiple legacy edges are available; choose an existing agent explicitly");
+    }
+    edgeId = edges[0].id;
+  }
+
   const resp = await api.createAgent();
   const agentId = resp.id || resp.agentSettingsId;
   if (!agentId) throw new Error(`Failed to create agent: ${JSON.stringify(resp)}`);
   const agentSettingsId = resp.agentSettingsId || agentId;
 
-  // 2. Set name
-  await api.updateAgentSettings(agentId, agentSettingsId, { name: folderName });
-
-  // 3. Wire the workspace path to this machine. The CLI spawns a bridge, so
-  //    prefer the local bridge *device*; fall back to the first edge for hosts
-  //    that still run the edge daemon instead.
-  const deviceId = bridgeDeviceId(api.apiUrl);
-  if (deviceId) {
-    await api.setAgentDeviceConfig(agentId, agentSettingsId, deviceId, { workspacePaths: [resolvedPath] });
-    const matches = await api.listAgentSettings({ workspacePath: resolvedPath });
-    if (matches.length) return matches[0];
-    resp.name = folderName;
-    resp.devicesConfig = { [deviceId]: { workspacePaths: [resolvedPath] } };
-    return resp;
+  try {
+    await api.updateAgentSettings(agentId, agentSettingsId, { name: folderName });
+    if (deviceId) {
+      await api.setAgentDeviceConfig(agentId, agentSettingsId, deviceId, { workspacePaths: [resolvedPath] });
+      resp.devicesConfig = { [deviceId]: { workspacePaths: [resolvedPath] } };
+    } else {
+      await api.setAgentEdgeMcpConfig(agentId, agentSettingsId, edgeId!, "todoai_edge", { workspacePaths: [resolvedPath] });
+      resp.edgesMcpConfigs = { [edgeId!]: { todoai_edge: { workspacePaths: [resolvedPath] } } };
+    }
+  } catch (e) {
+    await api.deleteAgentSettings(agentSettingsId).catch((d: any) => {
+      process.stderr.write(`Warning: could not remove half-created agent ${agentSettingsId}: ${d?.message ?? d}\n`);
+    });
+    throw e;
   }
-
-  const edges = await api.listEdges();
-  if (!Array.isArray(edges) || edges.length === 0) {
-    throw new Error("No bridge device or edge available to configure workspace path");
-  }
-  if (edges.length > 1) {
-    throw new Error("No local bridge device found and multiple legacy edges are available; choose an existing agent explicitly");
-  }
-  const edgeId = edges[0].id;
-
-  await api.setAgentEdgeMcpConfig(agentId, agentSettingsId, edgeId, "todoai_edge", { workspacePaths: [resolvedPath] });
 
   const matches = await api.listAgentSettings({ workspacePath: resolvedPath });
   if (matches.length) return matches[0];
-
-  // Fallback — construct from what we know
   resp.name = folderName;
-  resp.edgesMcpConfigs = { [edgeId]: { todoai_edge: { workspacePaths: [resolvedPath] } } };
   return resp;
 }
