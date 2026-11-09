@@ -83,7 +83,7 @@ Options:
 
 export function printShowHelp() {
   process.stderr.write(`
-tfa-cli show — put a file or url into the chat
+tfa-cli show — put a file or url into the chat (moved to \`tfa-show\`, which adds --bare/--wide; this stays as an alias)
 
 Usage:
   tfa-cli show <file|-> [todo-id]     Render a file by mimetype (- reads stdin)
@@ -114,7 +114,7 @@ Viewer chrome:
 
 When to use what:
   read once, move on             → plain chat reply
-  interactive, this chat only    → html_snippet (can exec/connect/chat back)
+  interactive, this chat only    → tfa-show - --bare (can exec/connect/chat back)
   keep / revise later            → show <file> --alias <name>  (versioned, private)
   bring it back up later         → show ref <alias>
   someone outside needs it       → show share <alias>  (public link, revocable)
