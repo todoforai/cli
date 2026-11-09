@@ -79,6 +79,21 @@ tfa-cli notify --to anna@x.com "Review?" "PR is ready" --href /t/<todo-id>   # n
 
 `notify` goes to your own user by default. `--to <email>` reaches one member of the current project (`--project <id>`, `$TODOFORAI_PROJECT_ID` or the default project); non-members are refused (404). It is shown as from you (or your agent). There is no broadcast / "all members" flag, so loop over `project members` to reach the whole team. `--subject` sets the dedupe key (the same text is delivered once), `--href` must be an in-app path. Caps: 10 new notes/day to yourself, 20/day to teammates.
 
+### Show files and HTML in the chat
+
+```bash
+tfa-cli show report.html --alias report     # render by mimetype; prints "<todoId>:report"
+tfa-cli show report.html --alias report     # same alias = same block, new version
+tfa-cli show chart.png --title "Q3"         # images, pdf, video, … render inline
+tfa-cli show ref report                     # re-post it live at the chat bottom
+tfa-cli show share report                   # public link (latest version); `unshare` revokes
+tfa-cli show rm report                      # remove block, link and every version
+tfa-cli show list                           # show blocks of this todo
+tfa-cli open https://example.com            # live preview of a url
+```
+
+HTML is rendered in a sandboxed iframe with the app theme and a `todo` bridge: `todo.exec(cmd)` (shell on the user's cloud computer), `todo.chat(text)`, `todo.show(data, opts)`, `todo.connect(toolKey, {reason})`. `--alias <todoId>:<alias>` updates a block in another todo. Full flags: `tfa-cli show --help`.
+
 ## IDE integration (ACP)
 
 `tfa-cli acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com) over stdio, so any ACP-capable editor can drive your agent: prompts from the editor chat, file edits as native diffs, permission prompts inline, and shell commands running on your machine through the bridge. One ACP thread = one todo. To log in explicitly, run `tfa-cli login`; `--isolated` / `--user-id` are not supported in this mode.
