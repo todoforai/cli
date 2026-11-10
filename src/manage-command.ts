@@ -6,6 +6,8 @@ import { getEnv } from "./args";
 import { getDisplayName, getItemId } from "./select";
 import { DIM, GREEN, RED, RESET } from "./colors";
 import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice-collect";
+import { readFileSync } from "fs";
+import { readStdin } from "./input";
 import { MANUAL_CHANNEL, manualAnswersOf, manualSamples, voiceNamesOf } from "@shared/fbe";
 
 export function printTodoHelp() {
@@ -17,6 +19,8 @@ Usage:
   tfa-cli todo comment <todo-id|-> "text"       Comment on it: why it's on the board, where it
                                                 stands (whoever sees the todo reads it, the agent never does)
   tfa-cli todo comments <todo-id|->             List its comments
+  tfa-cli todo html <todo-id|-> [file|-]        Its row HTML: no file = print it; a file / - (stdin)
+                                                = replace it; --rm = remove it (see below)
   tfa-cli todo restore <todo-id>                Bring a trashed todo back (undo of 'delete')
   tfa-cli todo flow <todo-id|->                 Where it stands in its flow, where it can go from here
   tfa-cli todo next <todo-id|-> ["outcome"]     Finish its step: on to the next one, or along the
@@ -37,10 +41,18 @@ Fields (PUT /todos/{id}):
                    Edit a SCHEDULED (not yet run) message: content, schedule (unix ms;
                    0 = run now). Runs with the todo's own agent.
 
+Row HTML (todo html): a bare HTML fragment drawn live INSIDE the todo's board row, under its title
+  (and pinned under the title bar of its open chat, there full chat width) —
+  the html_snippet harness: theme tokens, styled bare <button>/<input>, todo.exec/chat/connect/show.
+  Space: the row's width (~300-360px on desktop, full width on a phone) minus a 34px left indent,
+  at most 160px tall (clipped below); transparent on the row. Keep it to one line of chips/buttons,
+  a progress bar, a mini stat. todo.chat posts into THAT todo (starts a run with its agent).
+  Read it back (no file) and rewrite it to update; it stays until replaced or removed.
+
 Examples:
   tfa-cli todo set - title="Ship v2 landing" group=marketing
   tfa-cli todo set 3f2a91 star=true
-  tfa-cli todo set - deadline=2026-11-20 start=2026-11-10
+  tfa-cli todo set - deadline=2026-11-20 start="2026-11-10 09:00"
   tfa-cli todo comment - "Asked by Gábor; waits for the Q3 numbers"
   tfa-cli todo message - 8c1d… schedule=1760000000000
   tfa-cli status <todo-id> DONE                  (status has its own command)
@@ -66,6 +78,11 @@ Usage:
   tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
                                                    Public intake: autoStart maxSubmissions postIpLimit placeholder agentSettingsId
   tfa-cli project groups reorder <slug>…           Set wall order
+  tfa-cli project groups step <slug> [agent=on|off] [process="…"]
+                                                   The group as a flow's step: who does it (agent=on: its
+                                                   agent starts on every item that arrives; off: a person)
+                                                   and what happens there (process, the agent's instruction).
+                                                   No field: show it.
   tfa-cli project flows                            Flows: the order items go through the groups
   tfa-cli project flows set "<name>" <step>…       Create/replace a flow (same name = replace). A step is a
                                                    group slug, with routes: slug:<outcome>=<slug>[:…]
@@ -111,13 +128,13 @@ function parseDay(value: unknown, field: string): number {
   return Date.parse(day);
 }
 
-/** Whole day, or a day + HH:MM in local time (an exact moment: endTimed). */
-function parseDeadline(value: unknown): { endDate: number; endTimed?: boolean } {
+/** Whole day, or a day + HH:MM in local time (an exact moment: timed). */
+function parseMoment(value: unknown, field: string): [number, boolean] {
   const timed = typeof value === "string" && value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/);
-  if (!timed) return { endDate: parseDay(value, "deadline"), endTimed: false };
+  if (!timed) return [parseDay(value, field), false];
   const at = new Date(`${timed[1]}T${timed[2]}`).getTime();
-  if (Number.isNaN(at)) fail('deadline must be YYYY-MM-DD or "YYYY-MM-DD HH:MM"');
-  return { endDate: at, endTimed: true };
+  if (Number.isNaN(at)) fail(`${field} must be YYYY-MM-DD or "YYYY-MM-DD HH:MM"`);
+  return [at, true];
 }
 
 const NO_PROJECT = "No project — pass --project <id> or set TODOFORAI_PROJECT_ID";
@@ -154,6 +171,22 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     if (args.json) { console.log(JSON.stringify(comment)); return; }
     process.stderr.write(`${GREEN}✅ commented on ${todoId}${RESET}
 `);
+    return;
+  }
+  if (sub === "html") {
+    if (!todoId) fail("Usage: tfa-cli todo html <todo-id|-> [file|-] [--rm]");
+    const src = rest[0];
+    if (!src && !args.rm) {
+      const row = await api.getRowHtml(todoId);
+      if (args.json) { console.log(JSON.stringify(row)); return; }
+      if (row) process.stdout.write(row.html.endsWith("\n") ? row.html : row.html + "\n");
+      else process.stderr.write(`${DIM}No row HTML${RESET}\n`);
+      return;
+    }
+    const html = args.rm ? "" : src === "-" ? await readStdin() : readFileSync(src, "utf8");
+    if (!args.rm && !html.trim()) fail("Empty HTML (use --rm to remove it)");
+    await api.setRowHtml(todoId, html);
+    process.stderr.write(`${GREEN}✅ ${todoId} row HTML ${args.rm ? "removed" : `set (${html.length} chars)`}${RESET}\n`);
     return;
   }
   if (sub === "comments") {
@@ -194,8 +227,8 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     updates.starredAt = updates.star ? Date.now() : 0;
     delete updates.star;
   }
-  if ("startDate" in updates) updates.startDate = parseDay(updates.startDate, "start");
-  if ("endDate" in updates) Object.assign(updates, parseDeadline(updates.endDate));
+  if ("startDate" in updates) [updates.startDate, updates.startTimed] = parseMoment(updates.startDate, "start");
+  if ("endDate" in updates) [updates.endDate, updates.endTimed] = parseMoment(updates.endDate, "deadline");
   await api.updateTodo(todoId, updates);
   if (args.json) { console.log(JSON.stringify({ todoId, ...updates })); return; }
   process.stderr.write(`${GREEN}✅ ${todoId} updated: ${Object.keys(updates).join(", ")}${RESET}\n`);
@@ -262,6 +295,23 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       const group = await api.upsertProjectGroup(projectId, slug, parseAssignments(fields));
       if (args.json) { console.log(JSON.stringify(group, null, 2)); return; }
       process.stderr.write(`${GREEN}✅ group ${slug} saved${RESET}\n`);
+      return;
+    }
+    if (verb === "step") {
+      const [slug, ...fields] = gargs;
+      if (!slug) fail('Usage: tfa-cli project groups step <slug> [agent=on|off] [process="…"]');
+      const { workflow } = await api.getGroupWorkflow(projectId, slug);
+      const { agent, process: steps, ...unknown } = parseAssignments(fields);
+      if (Object.keys(unknown).length) fail(`Unknown field: ${Object.keys(unknown).join(", ")} (agent, process)`);
+      const { updatedAt: _at, updatedBy: _by, ...next } = workflow;
+      if (agent !== undefined) {
+        if (![true, false, "on", "off"].includes(agent)) fail("agent=on|off");
+        if (agent === true || agent === "on") next.agent = true; else delete next.agent;
+      }
+      if (steps !== undefined) next.process = String(steps);
+      const saved = fields.length ? (await api.setGroupWorkflow(projectId, slug, next)).workflow : workflow;
+      if (args.json) { console.log(JSON.stringify(saved, null, 2)); return; }
+      process.stderr.write(`${fields.length ? `${GREEN}✅ step ${slug} saved${RESET}\n` : ""}${slug}  ${saved.agent ? "its agent does it" : "a person does it"}\n${DIM}${saved.process ?? ""}${RESET}\n`);
       return;
     }
     if (verb === "intake") {
