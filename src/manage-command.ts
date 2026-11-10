@@ -7,6 +7,7 @@ import { getDisplayName, getItemId } from "./select";
 import { DIM, GREEN, RED, RESET } from "./colors";
 import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice-collect";
 import { readFileSync } from "fs";
+import { randomUUID } from "node:crypto";
 import { readStdin } from "./input";
 import { MANUAL_CHANNEL, manualAnswersOf, manualSamples, voiceNamesOf } from "@shared/fbe";
 
@@ -83,9 +84,17 @@ Usage:
                                                    agent starts on every item that arrives; off: a person)
                                                    and what happens there (process, the agent's instruction).
                                                    No field: show it.
-  tfa-cli project flows                            Flows: the order items go through the groups
-  tfa-cli project flows set "<name>" <step>…       Create/replace a flow (same name = replace). A step is a
-                                                   group slug, with routes: slug:<outcome>=<slug>[:…]
+  tfa-cli project flows                            Flows: boxes (steps) and the lines items go along
+  tfa-cli project flows set "<name>" <step>…       Create/replace a flow as a row: each step goes on to the
+                                                   next (same name = replace). A step is a group (its slug or
+                                                   its name); a name no group has makes a new column. Outcome
+                                                   jumps: <step>:<outcome>=<step>[:…]
+  tfa-cli project flows link "<name>" <from> <to> ["<outcome>"]
+                                                   Draw a line: items finished in <from> go to <to> (a new
+                                                   <to> joins the flow, its column is made). With an outcome
+                                                   it is a branch, taken by "tfa-cli todo next - <outcome>".
+  tfa-cli project flows unlink "<name>" <from> <to>   Remove that line
+  tfa-cli project flows drop "<name>" <step>       Take a step out, with its lines
   tfa-cli project flows rm "<name>"                Delete a flow (its todos stay where they are)
   tfa-cli project surfaces                         List the board's cards you can see: id, title, ref|note, group, color
   tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [color=#hex] [order=N]
@@ -102,7 +111,8 @@ Examples:
   tfa-cli project set name="Q4 launch"
   tfa-cli project groups set marketing name=Marketing description="Top-of-funnel work"
   tfa-cli project groups reorder marketing sales ops
-  tfa-cli project flows set "Számlakezelés" szamlak rendezes jovahagyas:rejected=szamlak utalas
+  tfa-cli project flows set "Számlakezelés" Számlák Jóváhagyás Utalás
+  tfa-cli project flows link "Számlakezelés" Jóváhagyás Visszaküldés rejected
   tfa-cli project surfaces set weekly-kpis ref=$TODOFORAI_TODO_ID:kpi title="Weekly KPIs" group=marketing
   tfa-cli project surfaces set sales-rules body="Quote prices in EUR, net of VAT." group=sales
 `);
@@ -344,25 +354,69 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
     const matches = flows.filter((f) => f.name === name || f.id === name);
     if (matches.length > 1) fail(`${matches.length} flows are named "${name}": use the id (tfa-cli project flows --json)`);
     const named = matches[0];
+    const lines = (f: any) => [
+      ...f.links.map((l: any) => `  ${l.from} → ${l.to}${l.when ? `  ${DIM}(${l.when})${RESET}` : ""}`),
+      ...f.steps.filter((s: any) => !f.links.some((l: any) => l.from === s.group || l.to === s.group)).map((s: any) => `  ${s.group}`),
+    ].join("\n");
     if (!verb) {
       if (args.json) { console.log(JSON.stringify(flows, null, 2)); return; }
-      for (const f of flows) {
-        const step = (s: any) => s.group + (s.routes ?? []).map((r: any) => ` ${DIM}(${r.when} → ${r.to})${RESET}`).join("");
-        process.stderr.write(`${f.name}: ${f.steps.map(step).join(" › ")}\n`);
-      }
+      for (const f of flows) process.stderr.write(`${f.name}${f.steps[0] ? ` ${DIM}(starts at ${f.steps[0].group})${RESET}` : ""}\n${lines(f)}\n`);
       if (!flows.length) process.stderr.write(`${DIM}No flows yet${RESET}\n`);
       return;
     }
+    // A step as written: a group's slug or name; a name no group has is a new step (its column is made with the flow).
+    const groups: any[] = ["set", "link", "unlink", "drop"].includes(verb) ? await api.listProjectGroups(projectId) : [];
+    const fresh = new Map<string, { group: string; name: string }>();
+    const step = (token: string): { group: string; name?: string } => {
+      const word = token.trim();
+      if (!word) fail("An empty step");
+      const g = groups.find((x) => x.slug === word) ?? groups.find((x) => x.name.toLowerCase() === word.toLowerCase());
+      if (g) return { group: g.slug };
+      if (!fresh.has(word.toLowerCase())) fresh.set(word.toLowerCase(), { group: `c-${randomUUID().slice(0, 4)}`, name: word });
+      return fresh.get(word.toLowerCase())!;
+    };
+    const save = async (flow: { id?: string; name: string; steps: any[]; links?: any[] }, did: string) => {
+      const saved = await api.setFlow(projectId, flow);
+      if (args.json) { console.log(JSON.stringify(saved, null, 2)); return; }
+      process.stderr.write(`${GREEN}✅ flow "${saved.name}" ${did}${RESET}\n${lines(saved)}\n`);
+    };
     if (verb === "set") {
-      if (!name || steps.length < 2) fail('Usage: tfa-cli project flows set "<name>" <step> <step>…  (step: slug, or slug:<outcome>=<slug>)');
+      if (!name || !steps.length) fail('Usage: tfa-cli project flows set "<name>" <step>…  (step: a group\'s slug or name, or a new name; jumps: <step>:<outcome>=<step>)');
       const parsed = steps.map((token) => {
         const [group, ...routes] = token.split(":");
-        return { group, ...(routes.length && { routes: routes.map((r) => { const [when, to] = r.split("="); if (!when || !to) fail(`Bad route in ${token}: write <outcome>=<slug>`); return { when, to }; }) }) };
+        return { ...step(group), ...(routes.length && { routes: routes.map((r) => { const [when, to] = r.split("="); if (!when || !to) fail(`Bad jump in ${token}: write <outcome>=<step>`); return { when, to }; }) }) };
       });
+      // Jump targets are steps of the row, as written.
+      const slug = (word: string) => { const s = step(word); if (!parsed.some((p) => p.group === s.group)) fail(`A jump goes to a step of the flow: ${word}`); return s.group; };
+      for (const p of parsed) for (const r of p.routes ?? []) r.to = slug(r.to);
       // Addressed by id: it keeps its name.
-      const flow = await api.setFlow(projectId, { ...(named && { id: named.id }), name: named?.id === name ? named.name : name, steps: parsed });
-      if (args.json) { console.log(JSON.stringify(flow, null, 2)); return; }
-      process.stderr.write(`${GREEN}✅ flow "${flow.name}" ${named ? "replaced" : "created"}: ${flow.steps.map((s: any) => s.group).join(" › ")}${RESET}\n`);
+      await save({ ...(named && { id: named.id }), name: named?.id === name ? named.name : name, steps: parsed }, named ? "replaced" : "created");
+      return;
+    }
+    if (verb === "link" || verb === "unlink" || verb === "drop") {
+      if (!named) fail(`No flow "${name ?? ""}". tfa-cli project flows lists them`);
+      const [a, b, ...why] = steps;
+      const kept = named.steps.map((s: any) => ({ group: s.group, x: s.x, y: s.y }));
+      const inFlow = (word: string) => { const s = step(word); if (!kept.some((k: any) => k.group === s.group)) fail(`Not a step of "${named.name}": ${word}`); return s.group; };
+      if (verb === "drop") {
+        if (!a || b) fail('Usage: tfa-cli project flows drop "<name>" <step>');
+        const gone = inFlow(a);
+        await save({ id: named.id, name: named.name, steps: kept.filter((k: any) => k.group !== gone), links: named.links.filter((l: any) => l.from !== gone && l.to !== gone) }, `: ${a} taken out`);
+        return;
+      }
+      if (!a || !b) fail(`Usage: tfa-cli project flows ${verb} "<name>" <from> <to>${verb === "link" ? ' ["<outcome>"]' : ""}`);
+      const from = inFlow(a);
+      if (verb === "unlink") {
+        const to = inFlow(b);
+        if (!named.links.some((l: any) => l.from === from && l.to === to)) fail(`No line ${a} → ${b}`);
+        await save({ id: named.id, name: named.name, steps: kept, links: named.links.filter((l: any) => !(l.from === from && l.to === to)) }, `: line ${a} → ${b} removed`);
+        return;
+      }
+      const to = step(b);
+      const when = why.join(" ").trim() || undefined;
+      // One line per outcome out of a step (and one for plain done): a new one replaces it.
+      const links = [...named.links.filter((l: any) => !(l.from === from && (l.when ?? "") === (when ?? ""))), { from, to: to.group, ...(when && { when }) }];
+      await save({ id: named.id, name: named.name, steps: kept.some((k: any) => k.group === to.group) ? kept : [...kept, to], links }, `: ${a} → ${b}${when ? ` (${when})` : ""}`);
       return;
     }
     if (verb === "rm") {
