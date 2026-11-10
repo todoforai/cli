@@ -129,7 +129,7 @@ No global install needed — `"command": "npx", "args": ["-y", "@todoforai/cli",
 ## All Options
 
 ```
---path <dir>                    Workspace path (default: cwd)
+--path <dir>                    Workspace path (default: cwd; an explicit --path creates its agent if none)
 --project <id>                  Project ID
 --agent, -a <name>              Agent name (partial match)
 --api-url <url>                 API URL

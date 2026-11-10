@@ -52,7 +52,7 @@ Examples:
   tfa-cli <command> help                # Details per command
 
 Options:
-  --path <dir>                    Workspace path (default: cwd)
+  --path <dir>                    Workspace path (default: cwd; an explicit --path creates its agent if none)
   --project <id>                  Project ID
   --agent, -a <name>              Agent name (partial match)
   --group <slug>                 Group new todo; omitted inherits TODOFORAI_GROUP_ID
@@ -163,7 +163,7 @@ export function parseCliArgs() {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     options: {
-      path: { type: "string", default: "." },
+      path: { type: "string" },
       project: { type: "string" },
       agent: { type: "string", short: "a" },
       model: { type: "string" },

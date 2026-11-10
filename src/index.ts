@@ -894,6 +894,11 @@ async function main() {
         process.stderr.write(`Error: Failed to auto-create agent: ${e.message}\n`);
         process.exit(1);
       }
+    } else if (getEnv("AGENT_SETTINGS_ID")) {
+      // Agent shell: the bridge exports the calling todo's agent, so a spun-off todo
+      // runs on it instead of auto-creating an agent per working folder.
+      const id = getEnv("AGENT_SETTINGS_ID");
+      preMatchedAgent = (await api.listAgentSettings()).find((a: any) => getItemId(a) === id) ?? null;
     }
   }
 
