@@ -6,6 +6,8 @@ import { getEnv } from "./args";
 import { getDisplayName, getItemId } from "./select";
 import { DIM, GREEN, RED, RESET } from "./colors";
 import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice-collect";
+import { readFileSync } from "fs";
+import { readStdin } from "./input";
 import { MANUAL_CHANNEL, manualAnswersOf, manualSamples, voiceNamesOf } from "@shared/fbe";
 
 export function printTodoHelp() {
@@ -17,6 +19,8 @@ Usage:
   tfa-cli todo comment <todo-id|-> "text"       Comment on it: why it's on the board, where it
                                                 stands (whoever sees the todo reads it, the agent never does)
   tfa-cli todo comments <todo-id|->             List its comments
+  tfa-cli todo html <todo-id|-> [file|-]        Its row HTML: no file = print it; a file / - (stdin)
+                                                = replace it; --rm = remove it (see below)
   tfa-cli todo restore <todo-id>                Bring a trashed todo back (undo of 'delete')
   tfa-cli todo flow <todo-id|->                 Where it stands in its flow, where it can go from here
   tfa-cli todo next <todo-id|-> ["outcome"]     Finish its step: on to the next one, or along the
@@ -36,6 +40,13 @@ Fields (PUT /todos/{id}):
   tfa-cli todo message <todo-id|-> <message-id> <field=value>…
                    Edit a SCHEDULED (not yet run) message: content, schedule (unix ms;
                    0 = run now). Runs with the todo's own agent.
+
+Row HTML (todo html): a bare HTML fragment drawn live INSIDE the todo's board row, under its title —
+  the html_snippet harness: theme tokens, styled bare <button>/<input>, todo.exec/chat/connect/show.
+  Space: the row's width (~300-360px on desktop, full width on a phone) minus a 34px left indent,
+  at most 160px tall (clipped below); transparent on the row. Keep it to one line of chips/buttons,
+  a progress bar, a mini stat. todo.chat posts into THAT todo (starts a run with its agent).
+  Read it back (no file) and rewrite it to update; it stays until replaced or removed.
 
 Examples:
   tfa-cli todo set - title="Ship v2 landing" group=marketing
@@ -154,6 +165,22 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     if (args.json) { console.log(JSON.stringify(comment)); return; }
     process.stderr.write(`${GREEN}✅ commented on ${todoId}${RESET}
 `);
+    return;
+  }
+  if (sub === "html") {
+    if (!todoId) fail("Usage: tfa-cli todo html <todo-id|-> [file|-] [--rm]");
+    const src = rest[0];
+    if (!src && !args.rm) {
+      const row = await api.getRowHtml(todoId);
+      if (args.json) { console.log(JSON.stringify(row)); return; }
+      if (row) process.stdout.write(row.html.endsWith("\n") ? row.html : row.html + "\n");
+      else process.stderr.write(`${DIM}No row HTML${RESET}\n`);
+      return;
+    }
+    const html = args.rm ? "" : src === "-" ? await readStdin() : readFileSync(src, "utf8");
+    if (!args.rm && !html.trim()) fail("Empty HTML (use --rm to remove it)");
+    await api.setRowHtml(todoId, html);
+    process.stderr.write(`${GREEN}✅ ${todoId} row HTML ${args.rm ? "removed" : `set (${html.length} chars)`}${RESET}\n`);
     return;
   }
   if (sub === "comments") {
