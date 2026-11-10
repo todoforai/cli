@@ -51,7 +51,7 @@ Row HTML (todo html): a bare HTML fragment drawn live INSIDE the todo's board ro
 Examples:
   tfa-cli todo set - title="Ship v2 landing" group=marketing
   tfa-cli todo set 3f2a91 star=true
-  tfa-cli todo set - deadline=2026-11-20 start=2026-11-10
+  tfa-cli todo set - deadline=2026-11-20 start="2026-11-10 09:00"
   tfa-cli todo comment - "Asked by Gábor; waits for the Q3 numbers"
   tfa-cli todo message - 8c1d… schedule=1760000000000
   tfa-cli status <todo-id> DONE                  (status has its own command)
@@ -122,13 +122,13 @@ function parseDay(value: unknown, field: string): number {
   return Date.parse(day);
 }
 
-/** Whole day, or a day + HH:MM in local time (an exact moment: endTimed). */
-function parseDeadline(value: unknown): { endDate: number; endTimed?: boolean } {
+/** Whole day, or a day + HH:MM in local time (an exact moment: timed). */
+function parseMoment(value: unknown, field: string): [number, boolean] {
   const timed = typeof value === "string" && value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/);
-  if (!timed) return { endDate: parseDay(value, "deadline"), endTimed: false };
+  if (!timed) return [parseDay(value, field), false];
   const at = new Date(`${timed[1]}T${timed[2]}`).getTime();
-  if (Number.isNaN(at)) fail('deadline must be YYYY-MM-DD or "YYYY-MM-DD HH:MM"');
-  return { endDate: at, endTimed: true };
+  if (Number.isNaN(at)) fail(`${field} must be YYYY-MM-DD or "YYYY-MM-DD HH:MM"`);
+  return [at, true];
 }
 
 const NO_PROJECT = "No project — pass --project <id> or set TODOFORAI_PROJECT_ID";
@@ -221,8 +221,8 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     updates.starredAt = updates.star ? Date.now() : 0;
     delete updates.star;
   }
-  if ("startDate" in updates) updates.startDate = parseDay(updates.startDate, "start");
-  if ("endDate" in updates) Object.assign(updates, parseDeadline(updates.endDate));
+  if ("startDate" in updates) [updates.startDate, updates.startTimed] = parseMoment(updates.startDate, "start");
+  if ("endDate" in updates) [updates.endDate, updates.endTimed] = parseMoment(updates.endDate, "deadline");
   await api.updateTodo(todoId, updates);
   if (args.json) { console.log(JSON.stringify({ todoId, ...updates })); return; }
   process.stderr.write(`${GREEN}✅ ${todoId} updated: ${Object.keys(updates).join(", ")}${RESET}\n`);
