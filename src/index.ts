@@ -392,10 +392,10 @@ async function main() {
     const todoId = (await rid(positionals[2])) || (!explicitProject ? (getEnv("TODO_ID") || cfgScope.data.last_todo_id) : undefined);
     const projectId = todoId ? undefined : ((args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id);
     if (!todoId && !projectId) {
-      process.stderr.write(`${RED}Usage: tfa-cli show list [todo-id] [--project <id>] [--card <name>]${RESET}\n`);
+      process.stderr.write(`${RED}Usage: tfa-cli show list [todo-id] [--project <id>] [--renderer <name>]${RESET}\n`);
       process.exit(2);
     }
-    const { items } = await api.listShows({ todoId, projectId, card: args.card as string | undefined });
+    const { items } = await api.listShows({ todoId, projectId, card: (args.renderer ?? args.card) as string | undefined });
     if (args.json) { console.log(JSON.stringify(items, null, 2)); return; }
     if (items.length === 0) {
       process.stderr.write(`${DIM}No show blocks in ${todoId || `project ${projectId}`}${RESET}\n`);
@@ -403,7 +403,7 @@ async function main() {
     }
     for (const it of items) {
       const kind = it.url ? `url ${it.url}` : it.target ? `→ ${it.target}` : (it.mime || "");
-      const card = it.cardRef ? ` card=${it.cardRef}` : "";
+      const card = it.cardRef ? ` renderer=${it.cardRef}` : "";
       const link = it.display === "link" ? " link" : "";
       const shared = it.shareUrl ? `  ${it.shareUrl}` : "";
       console.log(`${it.ref}  ${it.title || it.filename || ""}  ${kind}${card}${link}${shared}`);
@@ -453,7 +453,7 @@ async function main() {
     // Inside an agent shell the todo is implicit (TODOFORAI_TODO_ID); otherwise
     // fall back to the last todo this CLI touched.
     const todoId = (await rid(todoArg)) || aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--force]${RESET}\n`); process.exit(2); }
+    if (!filePath || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli show <file|-> [todo-id] [--title T] [--alias A] [--mime M] [--renderer <name>] [--link] [--force]${RESET}\n`); process.exit(2); }
 
     // `-` reads the bytes from stdin so any producer can pipe straight in
     // (`make_chart | todoforai-cli show -`). The bytes are stored either way.
@@ -489,7 +489,7 @@ async function main() {
     const blob = new Blob([bytes], { type: mime });
 
     const res = await api.showFile(todoId, blob, name, {
-      title: args.title, alias: args.alias, mime: args.mime, card: args.card as string | undefined,
+      title: args.title, alias: args.alias, mime: args.mime, card: (args.renderer ?? args.card) as string | undefined,
       display: args.link ? "link" : undefined,
     });
     if (args.json) console.log(JSON.stringify(res, null, 2));

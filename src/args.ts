@@ -88,19 +88,19 @@ tfa-cli show — put a file or url into the chat (moved to \`tfa-show\`, which a
 
 Usage:
   tfa-cli show <file|-> [todo-id]     Render a file by mimetype (- reads stdin)
-                                      [--title T] [--alias A] [--mime M] [--card <name>] [--link] [--force] [--json]
+                                      [--title T] [--alias A] [--mime M] [--renderer <name>] [--link] [--force] [--json]
                                       --link: compact download chip instead of inline render
                                       Refuses a likely-truncated image (JPEG/PNG cut before the end marker, WebP shorter than its RIFF size); --force shows it anyway
                                       Prints "<todoId>:<alias|id>". Private: visible to whoever can read the todo.
                                       Re-showing with the same --alias updates the block in place (new version)
                                       --alias <todoId>:<alias> updates that todo's block instead,
-                                      so a later chat can revise an artifact made elsewhere
-  tfa-cli show ref <ref|alias> [todo-id]  Re-post an artifact (any todo) at the chat bottom, live
+                                      so a later chat can revise a show made elsewhere
+  tfa-cli show ref <ref|alias> [todo-id]  Re-post a show (any todo) at the chat bottom, live
   tfa-cli show share <ref|alias>      Make it public; prints its link (serves the latest version)
   tfa-cli show unshare <ref|alias>    Make it private again (the link stops working)
   tfa-cli show rm <ref|alias>         Take it down (block, link, every version)
-  tfa-cli show list [todo-id]         List show blocks (ref, title, mime/url, card)
-                                      [--project <id>] [--card <name>] [--json]
+  tfa-cli show list [todo-id]         List show blocks (ref, title, mime/url, renderer)
+                                      [--project <id>] [--renderer <name>] [--json]
                                       no todo-id + --project (or $TODOFORAI_PROJECT_ID) = every todo
   tfa-cli open <url> [todo-id]        Live http(s) url as a preview  [--title T] [--alias A] [--json]
 
@@ -185,6 +185,7 @@ export function parseCliArgs() {
       alias: { type: "string" },
       mime: { type: "string" },
       card: { type: "string" },
+      renderer: { type: "string" },
       link: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       direction: { type: "string" },

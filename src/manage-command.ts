@@ -99,7 +99,7 @@ Usage:
   tfa-cli project surfaces                         List the board's cards you can see: id, title, ref|note, group, color
   tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [color=#hex] [order=N]
                                                    Show a ref on the board: a todo id, <todoId>:<alias>
-                                                   (shown artifact) or an http(s) url. group= puts it
+                                                   (a show) or an http(s) url. group= puts it
                                                    inside that group's card; group="" makes it standalone.
   tfa-cli project surfaces set <id> body="…" [group=<slug>] [color=#hex]
                                                    A note (markdown text). Seen by
