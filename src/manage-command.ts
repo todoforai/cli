@@ -93,6 +93,8 @@ Usage:
                                                    Draw a line: items finished in <from> go to <to> (a new
                                                    <to> joins the flow, its column is made). With an outcome
                                                    it is a branch, taken by "tfa-cli todo next - <outcome>".
+                                                   <to> as "flow:<other flow>": the item goes on in that flow,
+                                                   at its first step (flows chained one after the other).
   tfa-cli project flows unlink "<name>" <from> <to>   Remove that line
   tfa-cli project flows drop "<name>" <step>       Take a step out, with its lines
   tfa-cli project flows rm "<name>"                Delete a flow (its todos stay where they are)
@@ -225,7 +227,7 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     if (!pos) { process.stderr.write(`${DIM}Not in a flow${RESET}\n`); return; }
     const mark: Record<string, string> = { done: "✓ ", here: "▶ ", next: "" };
     process.stderr.write(`${pos.flowName}: ${pos.steps.map((s: any) => `${mark[s.state]}${s.name}`).join(" › ")}\n`);
-    for (const m of pos.moves) process.stderr.write(`  ${m.when ? `"${m.when}"` : "done"} → ${m.toName ?? "end (done)"}${m.to ? ` ${DIM}(${m.to})${RESET}` : ""}\n`);
+    for (const m of pos.moves) process.stderr.write(`  ${m.when ? `"${m.when}"` : "done"} → ${m.toName ?? "end (done)"}${m.toFlow ? `, on in the flow "${m.toFlow}"` : ""}${m.to ? ` ${DIM}(${m.to})${RESET}` : ""}\n`);
     if (pos.pending !== undefined) process.stderr.write(`${DIM}picked: ${pos.pending || "done"} (goes when the run ends)${RESET}\n`);
     return;
   }
@@ -354,8 +356,18 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
     const matches = flows.filter((f) => f.name === name || f.id === name);
     if (matches.length > 1) fail(`${matches.length} flows are named "${name}": use the id (tfa-cli project flows --json)`);
     const named = matches[0];
+    // A line's end as shown: a step's slug, or the flow it goes on in.
+    const end = (to: string) => { const f = to.startsWith("flow:") && flows.find((x) => x.id === to.slice(5)); return f ? `flow "${f.name}"` : to; };
+    // "flow:<name or id>" as written: the line leaves for that flow.
+    const onward = (word: string): string | undefined => {
+      if (!word.startsWith("flow:")) return undefined;
+      const called = word.slice(5).trim();
+      const found = flows.filter((f) => f.id === called || f.name === called);
+      if (found.length !== 1) fail(found.length ? `${found.length} flows are named "${called}": use the id` : `No flow "${called}". tfa-cli project flows lists them`);
+      return `flow:${found[0].id}`;
+    };
     const lines = (f: any) => [
-      ...f.links.map((l: any) => `  ${l.from} → ${l.to}${l.when ? `  ${DIM}(${l.when})${RESET}` : ""}`),
+      ...f.links.map((l: any) => `  ${l.from} → ${end(l.to)}${l.when ? `  ${DIM}(${l.when})${RESET}` : ""}`),
       ...f.steps.filter((s: any) => !f.links.some((l: any) => l.from === s.group || l.to === s.group)).map((s: any) => `  ${s.group}`),
     ].join("\n");
     if (!verb) {
@@ -382,6 +394,7 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
     };
     if (verb === "set") {
       if (!name || !steps.length) fail('Usage: tfa-cli project flows set "<name>" <step>…  (step: a group\'s slug or name, or a new name; jumps: <step>:<outcome>=<step>)');
+      if (steps.some((token) => token.includes("flow:"))) fail('A row of steps stays in its flow. Send it on into another with: tfa-cli project flows link "<name>" <from> "flow:<other flow>"');
       const parsed = steps.map((token) => {
         const [group, ...routes] = token.split(":");
         return { ...step(group), ...(routes.length && { routes: routes.map((r) => { const [when, to] = r.split("="); if (!when || !to) fail(`Bad jump in ${token}: write <outcome>=<step>`); return { when, to }; }) }) };
@@ -407,16 +420,17 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       if (!a || !b) fail(`Usage: tfa-cli project flows ${verb} "<name>" <from> <to>${verb === "link" ? ' ["<outcome>"]' : ""}`);
       const from = inFlow(a);
       if (verb === "unlink") {
-        const to = inFlow(b);
+        // A line as listed (to a flow not shown to you, by its id) is taken as written.
+        const to = named.links.some((l: any) => l.from === from && l.to === b) ? b : onward(b) ?? inFlow(b);
         if (!named.links.some((l: any) => l.from === from && l.to === to)) fail(`No line ${a} → ${b}`);
         await save({ id: named.id, name: named.name, steps: kept, links: named.links.filter((l: any) => !(l.from === from && l.to === to)) }, `: line ${a} → ${b} removed`);
         return;
       }
-      const to = step(b);
+      const to = onward(b) ? { group: onward(b)! } : step(b);
       const when = why.join(" ").trim() || undefined;
       // One line per outcome out of a step (and one for plain done): a new one replaces it.
       const links = [...named.links.filter((l: any) => !(l.from === from && (l.when ?? "") === (when ?? ""))), { from, to: to.group, ...(when && { when }) }];
-      await save({ id: named.id, name: named.name, steps: kept.some((k: any) => k.group === to.group) ? kept : [...kept, to], links }, `: ${a} → ${b}${when ? ` (${when})` : ""}`);
+      await save({ id: named.id, name: named.name, steps: onward(b) || kept.some((k: any) => k.group === to.group) ? kept : [...kept, to], links }, `: ${a} → ${b}${when ? ` (${when})` : ""}`);
       return;
     }
     if (verb === "rm") {
