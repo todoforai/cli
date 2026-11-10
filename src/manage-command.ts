@@ -41,7 +41,8 @@ Fields (PUT /todos/{id}):
                    Edit a SCHEDULED (not yet run) message: content, schedule (unix ms;
                    0 = run now). Runs with the todo's own agent.
 
-Row HTML (todo html): a bare HTML fragment drawn live INSIDE the todo's board row, under its title —
+Row HTML (todo html): a bare HTML fragment drawn live INSIDE the todo's board row, under its title
+  (and pinned under the title bar of its open chat, there full chat width) —
   the html_snippet harness: theme tokens, styled bare <button>/<input>, todo.exec/chat/connect/show.
   Space: the row's width (~300-360px on desktop, full width on a phone) minus a 34px left indent,
   at most 160px tall (clipped below); transparent on the row. Keep it to one line of chips/buttons,
@@ -77,6 +78,11 @@ Usage:
   tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
                                                    Public intake: autoStart maxSubmissions postIpLimit placeholder agentSettingsId
   tfa-cli project groups reorder <slug>…           Set wall order
+  tfa-cli project groups step <slug> [agent=on|off] [process="…"]
+                                                   The group as a flow's step: who does it (agent=on: its
+                                                   agent starts on every item that arrives; off: a person)
+                                                   and what happens there (process, the agent's instruction).
+                                                   No field: show it.
   tfa-cli project flows                            Flows: the order items go through the groups
   tfa-cli project flows set "<name>" <step>…       Create/replace a flow (same name = replace). A step is a
                                                    group slug, with routes: slug:<outcome>=<slug>[:…]
@@ -289,6 +295,23 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       const group = await api.upsertProjectGroup(projectId, slug, parseAssignments(fields));
       if (args.json) { console.log(JSON.stringify(group, null, 2)); return; }
       process.stderr.write(`${GREEN}✅ group ${slug} saved${RESET}\n`);
+      return;
+    }
+    if (verb === "step") {
+      const [slug, ...fields] = gargs;
+      if (!slug) fail('Usage: tfa-cli project groups step <slug> [agent=on|off] [process="…"]');
+      const { workflow } = await api.getGroupWorkflow(projectId, slug);
+      const { agent, process: steps, ...unknown } = parseAssignments(fields);
+      if (Object.keys(unknown).length) fail(`Unknown field: ${Object.keys(unknown).join(", ")} (agent, process)`);
+      const { updatedAt: _at, updatedBy: _by, ...next } = workflow;
+      if (agent !== undefined) {
+        if (![true, false, "on", "off"].includes(agent)) fail("agent=on|off");
+        if (agent === true || agent === "on") next.agent = true; else delete next.agent;
+      }
+      if (steps !== undefined) next.process = String(steps);
+      const saved = fields.length ? (await api.setGroupWorkflow(projectId, slug, next)).workflow : workflow;
+      if (args.json) { console.log(JSON.stringify(saved, null, 2)); return; }
+      process.stderr.write(`${fields.length ? `${GREEN}✅ step ${slug} saved${RESET}\n` : ""}${slug}  ${saved.agent ? "its agent does it" : "a person does it"}\n${DIM}${saved.process ?? ""}${RESET}\n`);
       return;
     }
     if (verb === "intake") {

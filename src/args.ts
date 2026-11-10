@@ -28,7 +28,7 @@ Examples:
   tfa-cli models [filter]               # Available models
   tfa-cli agent list|get|update|create …        # Agents (update <agent> model=…)
   tfa-cli todo set <todo-id|-> title=… group=… star=true   # Edit a todo's fields
-  tfa-cli todo html <todo-id|-> [file|-] [--rm]  # Live HTML inside the todo's board row (read/set/remove)
+  tfa-cli todo html <todo-id|-> [file|-] [--rm]  # Live HTML in the todo's board row + atop its chat (read/set/remove)
   tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one
   tfa-cli brand [show|create|rename|voice …]    # The project's brand page + voice learning
   tfa-cli device list|rename|wallpaper …        # Paired machines
