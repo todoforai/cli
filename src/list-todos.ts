@@ -9,7 +9,7 @@
  */
 
 import { parseArgs } from "util";
-import { TodoStatus, CLOSED_STATUSES } from "@shared/fbe";
+import { TodoStatus, CLOSED_STATUSES, unseenStatus } from "@shared/fbe";
 import { CYAN, DIM, GREEN, YELLOW, RED, RESET } from "./colors";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -36,6 +36,7 @@ Output: STATUS  YYYY-MM-DD HH:MM  <todoId>  <first line of content>
 
 Filters (all combinable):
   -s, --status <S,S2>    exact statuses, union (closed ones included); OPEN = any non-closed
+      --state <slug,…>   the project's own states (tfa-cli project states), union
       --search <text>    content/status substring (backend)
       --contributor <u>  id or email, comma = any; "all" = no filter (default: you)
       --since/--until <t> window on the sort field: epoch ms | YYYY-MM-DD | ISO | 12h / 3d (ago)
@@ -141,6 +142,7 @@ export async function listTodosCommand(
       sort:       { type: "string" },
       contributor: { type: "string" },
       status:     { type: "string",  short: "s" },
+      state:      { type: "string" },
       all:        { type: "boolean", short: "A", default: false },
       project:    { type: "string" },
       json:       { type: "boolean", default: false },
@@ -187,7 +189,19 @@ export async function listTodosCommand(
   if (unknown.length) printStatusError(unknown);
   const wantOpen = !!requested?.some(s => s === "OPEN");
   const wanted = requested ? new Set(requested.filter(s => VALID_STATUS.has(s))) : null;
-  const includeClosed = !!values.all || (!!wanted && wanted.size > 0);
+  const wantedStates = values.state ? new Set(String(values.state).split(",").map(s => s.trim()).filter(Boolean)) : null;
+  const includeClosed = !!values.all || (!!wanted && wanted.size > 0) || !!wantedStates;
+  // A state shows only while the todo is on its base status (an older slug can linger in storage).
+  const stateDefs: { slug: string; name: string; base: string }[] = await api.listTodoStates(projectId).catch(() => []);
+  if (wantedStates) {
+    const unknownStates = [...wantedStates].filter(s => !stateDefs.some(d => d.slug === s));
+    if (unknownStates.length) {
+      process.stderr.write(`${RED}Error: unknown state ${unknownStates.map(s => `'${s}'`).join(", ")}${RESET}\n`);
+      process.stderr.write(`${DIM}This project's states: ${stateDefs.map(d => d.slug).join(", ") || "(none, add with: project states set <slug> name=… icon=… base=…)"}${RESET}\n`);
+      process.exit(2);
+    }
+  }
+  const shownState = (t: any) => t.state ? stateDefs.find(d => d.slug === t.state && unseenStatus(t.status) === d.base) : undefined;
 
   const rows: any[] = [];
   let backendNextCursor: number | undefined;
@@ -212,6 +226,7 @@ export async function listTodosCommand(
       const status = String(t.status).toUpperCase();
       if (!includeClosed && CLOSED.has(status)) continue;
       if (!matchesRequestedStatus(t, requested, wanted, wantOpen)) continue;
+      if (wantedStates && !wantedStates.has(shownState(t)?.slug ?? "")) continue;
       rows.push(t);
       if (rows.length >= limit) break;
     }
@@ -245,10 +260,12 @@ export async function listTodosCommand(
     return;
   }
 
-  const statusW = visible.reduce((n, r) => Math.max(n, String(r.status).length), 0);
+  // A todo in one of the project's own states shows its name: "REJECTED · Client said no".
+  const label = (t: any) => { const s = String(t.status).toUpperCase(), st = shownState(t); return st ? `${s} · ${st.name}` : s; };
+  const statusW = visible.reduce((n, r) => Math.max(n, label(r).length), 0);
   for (const t of visible) {
-    const status = String(t.status).toUpperCase();
-    const sc = STATUS_COLOR[status] || DIM;
+    const status = label(t);
+    const sc = STATUS_COLOR[String(t.status).toUpperCase()] || DIM;
     const ts = new Date(rowTime(t, sort)).toISOString().slice(0, 16).replace("T", " ");
     const title = String(t.content ?? "").split("\n")[0].slice(0, 100);
     process.stdout.write(`${sc}${status.padEnd(statusW)}${RESET}  ${DIM}${ts}${RESET}  ${t.id}  ${title}\n`);
