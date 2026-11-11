@@ -35,6 +35,7 @@ Fields (PUT /todos/{id}):
   agent            agentSettingsId (alias: agentSettingsId)
   public           true|false — refused from an agent shell (isPublic)
   kind             task|info — promote an ⓘ info row to a task (or back)
+  section          one of its group's sections (project groups set <slug> sections=…); "" takes it out
   deadline         YYYY-MM-DD (whole day) or "YYYY-MM-DD HH:MM" (local time); "" clears (alias: end)
   start            YYYY-MM-DD planned start; "" clears
 
@@ -53,6 +54,7 @@ Row HTML (todo html): a bare HTML fragment drawn live INSIDE the todo's board ro
 Examples:
   tfa-cli todo set - title="Ship v2 landing" group=marketing
   tfa-cli todo set 3f2a91 star=true
+  tfa-cli todo set 3f2a91 section="To pay"        (one of its group's sections; section="" takes it out)
   tfa-cli todo set - deadline=2026-11-20 start="2026-11-10 09:00"
   tfa-cli todo comment - "Asked by Gábor; waits for the Q3 numbers"
   tfa-cli todo message - 8c1d… schedule=1760000000000
@@ -76,6 +78,9 @@ Usage:
   tfa-cli project settings <field=value>…          Project settings (PUT /settings/projects/{id})
   tfa-cli project groups                           List todo groups
   tfa-cli project groups set <slug> <field=value>… Create/update a group: name description pinned archived order
+                                                   sections="Urgent,To pay,Later" (its piles, in order; "" = none)
+  tfa-cli project groups section <slug> <old> <new>
+                                                   Rename a section; its todos keep it
   tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
                                                    Public intake: autoStart maxSubmissions postIpLimit placeholder agentSettingsId
   tfa-cli project groups reorder <slug>…           Set wall order
@@ -298,15 +303,29 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
     if (!verb) {
       const groups = await api.listProjectGroups(projectId);
       if (args.json) { console.log(JSON.stringify(groups, null, 2)); return; }
-      for (const g of groups) process.stderr.write(`${getItemId(g) || g.slug}  ${g.name ?? ""}  ${DIM}${g.description ?? ""}${RESET}\n`);
+      for (const g of groups) process.stderr.write(`${getItemId(g) || g.slug}  ${g.name ?? ""}  ${DIM}${[g.description, g.sections?.length && `[${g.sections.join(" | ")}]`].filter(Boolean).join("  ")}${RESET}\n`);
       return;
     }
     if (verb === "set") {
       const [slug, ...fields] = gargs;
       if (!slug) fail("Usage: tfa-cli project groups set <slug> <field=value>…");
-      const group = await api.upsertProjectGroup(projectId, slug, parseAssignments(fields));
+      const updates = parseAssignments(fields);
+      // "A,B,C" (or a JSON array): the sections, in order.
+      if ("sections" in updates && !Array.isArray(updates.sections)) updates.sections = String(updates.sections).split(",").map((s) => s.trim()).filter(Boolean);
+      const group = await api.upsertProjectGroup(projectId, slug, updates);
       if (args.json) { console.log(JSON.stringify(group, null, 2)); return; }
       process.stderr.write(`${GREEN}✅ group ${slug} saved${RESET}\n`);
+      return;
+    }
+    if (verb === "section") {
+      const [slug, from, to] = gargs;
+      if (!slug || !from || !to) fail("Usage: tfa-cli project groups section <slug> <old> <new>");
+      const sections: string[] = (await api.listProjectGroups(projectId)).find((g: any) => g.slug === slug)?.sections ?? [];
+      const at = sections.findIndex((s) => s.toLowerCase() === from.toLowerCase());
+      if (at < 0) fail(`No section "${from}" in ${slug}${sections.length ? `: ${sections.join(", ")}` : ""}`);
+      const group = await api.upsertProjectGroup(projectId, slug, { sections: sections.map((s, i) => (i === at ? to : s)), renameSection: { from: sections[at], to } });
+      if (args.json) { console.log(JSON.stringify(group, null, 2)); return; }
+      process.stderr.write(`${GREEN}✅ ${sections[at]} → ${to}${RESET}\n`);
       return;
     }
     if (verb === "step") {
