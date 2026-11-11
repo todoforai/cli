@@ -517,36 +517,16 @@ async function main() {
     return;
   }
 
-  if (positionals[0] === "ignore") {
-    // The dispatcher's third outcome: not a row, but not silently gone either.
-    const title = (args.title as string | undefined)?.trim();
-    if (!title) { process.stderr.write(`${RED}Usage: tfa-cli ignore --title "..." [--source "label|ref|url|from"] [--note "why"] [--project <id>]${RESET}\n`); process.exit(2); }
-    const source = args.source ? (() => { const [label, ref, url, from] = String(args.source).split("|"); return label && ref ? { label, ref, ...(url ? { url } : {}), ...(from ? { from } : {}) } : undefined; })() : undefined;
-    const projectId = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
-    if (!projectId) { process.stderr.write(`${RED}No project found — pass --project <id>${RESET}\n`); process.exit(2); }
-    await api.feedIgnore({ projectId, title, ...(source ? { source } : {}), ...(args.note ? { why: args.note as string } : {}) });
-    process.stderr.write(`${DIM}ignored: ${title}${RESET}\n`);
-    return;
-  }
-
   if (positionals[0] === "recommend") {
     // Reference an existing registry template as a recommendation card on a project.
     // Templates are created by `todoregistry-cli create` (which prints the id).
-    // Two shapes: a registry template (--template <id>), or an inline card from --title
-    // (the dispatcher's path: a ✧ proposal, or with --info a plain ⓘ information row).
+    // Two shapes: a registry template (--template <id>), or an inline card from --title.
     const templateId = (args.template as string) || positionals[1];
     const inlineTitle = !templateId && (args.title as string | undefined)?.trim();
     if (!templateId && !inlineTitle) {
-      process.stderr.write(`${RED}Usage: tfa-cli recommend --template <id> | --title "..." [--info] [--source "label|ref|url|from"] [--note "why"] [--priority high|medium|low] [--group <slug> [--group-name "..."] [--group-description "..."]] [--project <id>]${RESET}\n`);
-      process.stderr.write(`${DIM}--info: an information row (no ✧, nothing to accept). --source: provenance; the same label|ref never creates a second row.${RESET}\n`);
+      process.stderr.write(`${RED}Usage: tfa-cli recommend --template <id> | --title "..." [--note "why"] [--priority high|medium|low] [--group <slug> [--group-name "..."] [--group-description "..."]] [--project <id>]${RESET}\n`);
       process.exit(2);
     }
-    const source = (() => {
-      if (!args.source) return undefined;
-      const [label, ref, url, from] = String(args.source).split("|");
-      if (!label || !ref) { process.stderr.write(`${RED}--source needs at least "label|ref"${RESET}\n`); process.exit(2); }
-      return { label, ref, ...(url ? { url } : {}), ...(from ? { from } : {}) };
-    })();
     let projectId = (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
     if (!projectId) {
       const projects = await api.listProjects();
@@ -565,11 +545,9 @@ async function main() {
       // name + description, so the title isn't repeated); body = what the agent is told on accept.
       ...(templateId ? { specId: templateId } : { template: {
         name: inlineTitle as string,
-        description: (args.note as string) || (source ? `From ${source.label}` : inlineTitle as string),
-        body: `Handle this item: ${inlineTitle}${args.note ? `\n\n${args.note}` : ""}${source?.url ? `\n\nOriginal: ${source.url}` : ""}`,
+        description: (args.note as string) || (inlineTitle as string),
+        body: `Handle this item: ${inlineTitle}${args.note ? `\n\n${args.note}` : ""}`,
       } }),
-      ...(args.info ? { todoKind: "info" as const } : {}),
-      ...(source ? { source } : {}),
       ...(args.title ? { title: args.title as string } : {}),
       ...(args.note ? { note: args.note as string } : {}),
       ...(priority ? { priority } : {}),
@@ -578,7 +556,7 @@ async function main() {
       ...(args["group-description"] ? { groupDescription: args["group-description"] as string } : {}),
     });
     if (args.json) console.log(JSON.stringify(rec, null, 2));
-    else process.stderr.write(`${GREEN}✅ ${args.info ? "ⓘ info" : "✧ proposal"} ${rec?.id ?? ""} on project ${projectId}${RESET}\n`);
+    else process.stderr.write(`${GREEN}✅ ✧ proposal ${rec?.id ?? ""} on project ${projectId}${RESET}\n`);
     return;
   }
 
