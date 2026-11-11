@@ -241,7 +241,7 @@ export function applySlice<T>(arr: T[], spec: string): T[] {
 const truncAt = (s: string, n: number) => s.length > n ? s.slice(0, n) + `\n${DIM}... (${s.length} chars, --full for all)${RESET}` : s;
 const indent = (s: string, pre: string) => s.split("\n").join(`\n${pre}`);
 
-export function printFullChat(todo: any, frontendUrl: string, slice?: string, mode: InspectMode = "default", format: InspectFormat = "compact", full = false) {
+export function printFullChat(todo: any, frontendUrl: string, slice?: string, mode: InspectMode = "default", format: InspectFormat = "compact", full = false, stateName?: string) {
   // One stream: the log reads in order through `| less`/`| grep`/`> file`.
   const out = (s: string) => process.stdout.write(s);
   const trunc = (s: string, n: number) => full ? s : truncAt(s, n);
@@ -253,7 +253,7 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
   const statusColor = statusColors[todo.status] || DIM;
 
   out(`${BOLD}TODO${RESET} ${todo.id}\n`);
-  out(`${DIM}Status:${RESET} ${statusColor}${todo.status}${RESET}\n`);
+  out(`${DIM}Status:${RESET} ${statusColor}${todo.status}${RESET}${stateName ? ` · ${stateName}` : ""}\n`);
   out(`${DIM}URL:${RESET}    ${CYAN}${frontendUrl}${RESET}\n`);
   out(`${DIM}Created:${RESET} ${new Date(todo.createdAt).toLocaleString()}\n`);
   if (todo.agentSettingsId) out(`${DIM}Agent:${RESET}  ${todo.agentSettingsId}\n`);

@@ -19,7 +19,7 @@ try {
   if (process.argv[2] !== "update") backgroundUpdate(ownPkg!);
 } catch {}
 import { ApiClient, restBasePath, FrontendWebSocket, type RegistrySpec } from "@shared/api";
-import { qualifiedModelIds, getMimeTypeFromFilename, truncatedImageReason } from "@shared/fbe";
+import { qualifiedModelIds, getMimeTypeFromFilename, truncatedImageReason, unseenStatus } from "@shared/fbe";
 import { normalizeApiUrl } from "@shared/credentials";
 
 import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, printShowHelp, parseCliArgs } from "./args";
@@ -699,7 +699,9 @@ async function main() {
     }
     const mode: InspectMode = args.debug ? "debug" : args.detailed ? "detailed" : "default";
     const format: InspectFormat = args["format-anthropic"] ? "anthropic" : "compact";
-    printFullChat(todo, getFrontendUrl(apiUrl, todoId!), slice, mode, format, args.full);
+    // The project's own state (tfa-cli project states), while the todo is still on its base status.
+    const stateDef = todo.state ? ((await api.listTodoStates(todo.projectId).catch(() => [])) as any[]).find(d => d.slug === todo.state && unseenStatus(todo.status) === d.base) : undefined;
+    printFullChat(todo, getFrontendUrl(apiUrl, todoId!), slice, mode, format, args.full, stateDef?.name);
     return;
   }
 
