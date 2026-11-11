@@ -36,6 +36,7 @@ Fields (PUT /todos/{id}):
   public           true|false — refused from an agent shell (isPublic)
   kind             task|info — promote an ⓘ info row to a task (or back)
   section          one of its group's sections (project groups set <slug> sections=…); "" takes it out
+  state            one of the project's own states (project states); also sets its base status; "" clears
   deadline         YYYY-MM-DD (whole day) or "YYYY-MM-DD HH:MM" (local time); "" clears (alias: end)
   start            YYYY-MM-DD planned start; "" clears
 
@@ -89,6 +90,11 @@ Usage:
                                                    agent starts on every item that arrives; off: a person)
                                                    and what happens there (process, the agent's instruction).
                                                    No field: show it.
+  tfa-cli project states                           The project's own todo states (name + lucide icon on a base status)
+  tfa-cli project states set <slug> <field=value>… Create/update one: name icon (lucide.dev/icons name, e.g. thumbs-down)
+                                                   color (#rrggbb, "" = the base status' color)
+                                                   base (READY|REVIEW_REQUESTED|DONE|CANCELLED|REJECTED)
+  tfa-cli project states drop <slug>               Remove one (todos in it fall back to their status)
   tfa-cli project flows                            Flows: boxes (steps) and the lines items go along
   tfa-cli project flows set "<name>" <step>…       Create/replace a flow as a row: each step goes on to the
                                                    next (same name = replace). A step is a group (its slug or
@@ -375,6 +381,33 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       return;
     }
     fail(`Unknown 'project groups' verb: ${verb}`);
+  }
+  if (sub === "states") {
+    const [verb, slug, ...fields] = rest;
+    const states: any[] = await api.listTodoStates(projectId);
+    if (!verb) {
+      if (args.json) { console.log(JSON.stringify(states, null, 2)); return; }
+      if (!states.length) process.stderr.write(`${DIM}No states yet: tfa-cli project states set <slug> name=… icon=… base=…${RESET}\n`);
+      for (const st of states) process.stderr.write(`${st.slug}  ${st.name}  ${DIM}${st.icon}  ${st.base}${st.color ? `  ${st.color}` : ""}${RESET}\n`);
+      return;
+    }
+    if (!slug) fail(`Usage: tfa-cli project states ${verb} <slug>${verb === "set" ? " <field=value>…" : ""}`);
+    let next: any[];
+    if (verb === "set") {
+      const { name, icon, color, base, ...unknown } = parseAssignments(fields);
+      if (Object.keys(unknown).length) fail(`Unknown field: ${Object.keys(unknown).join(", ")} (name, icon, color, base)`);
+      const old = states.find((st) => st.slug === slug);
+      const st = { slug, name: name ?? old?.name ?? slug, icon: icon ?? old?.icon ?? "tag", base: base ?? old?.base ?? "CANCELLED", ...((color ?? old?.color) && { color: color ?? old?.color }) };
+      if (color === "") delete st.color;
+      next = old ? states.map((s) => (s.slug === slug ? st : s)) : [...states, st];
+    } else if (verb === "drop") {
+      if (!states.some((st) => st.slug === slug)) fail(`No state "${slug}"`);
+      next = states.filter((st) => st.slug !== slug);
+    } else fail(`Unknown 'project states' verb: ${verb} (set, drop)`);
+    const saved = await api.setTodoStates(projectId, next!);
+    if (args.json) { console.log(JSON.stringify(saved, null, 2)); return; }
+    process.stderr.write(`${GREEN}✅ state ${slug} ${verb === "drop" ? "removed" : "saved"}${RESET}\n`);
+    return;
   }
   if (sub === "flows") {
     const [verb, name, ...steps] = rest;

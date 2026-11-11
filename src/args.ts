@@ -131,6 +131,7 @@ const STATUS_HELP: Partial<Record<TodoStatus, string>> = {
   [TodoStatus.DONE]: "Completed and finalized",
   [TodoStatus.REVIEW_REQUESTED]: "Hand it to a person to approve",
   [TodoStatus.CANCELLED]: "Stop a running TODO",
+  [TodoStatus.REJECTED]: "A person turned it down (stays on the board, not a failure)",
   [TodoStatus.ARCHIVED]: "Archived (hidden from active list)",
   [TodoStatus.DELETED]: "Marked for deletion",
 };
