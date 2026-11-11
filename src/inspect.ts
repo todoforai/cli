@@ -247,7 +247,7 @@ export function printFullChat(todo: any, frontendUrl: string, slice?: string, mo
   const trunc = (s: string, n: number) => full ? s : truncAt(s, n);
   const statusColors: Record<string, string> = {
     DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
-    ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED,
+    ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED, REJECTED: RED,
     RUNNING: YELLOW, STOPPING: YELLOW, TODO: CYAN,
   };
   const statusColor = statusColors[todo.status] || DIM;
