@@ -103,6 +103,13 @@ Usage:
   tfa-cli project flows unlink "<name>" <from> <to>   Remove that line
   tfa-cli project flows drop "<name>" <step>       Take a step out, with its lines
   tfa-cli project flows rm "<name>"                Delete a flow (its todos stay where they are)
+  tfa-cli project sources                          What brings items in from outside besides tfa-wait triggers:
+                                                   your linked accounts (Slack, Discord, X, Instagram, Reddit)
+                                                   and the project's public forms, each with the flow or
+                                                   group it fills ("sources all": your accounts in any project)
+  tfa-cli project sources set <platform|id> flow="<name>" | group=<slug>
+                                                   Point a linked account at a flow (items land in its first
+                                                   step, as its items) or at a group
   tfa-cli project surfaces                         List the board's cards you can see: id, title, ref|note, group, color
   tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [color=#hex] [order=N]
                                                    Show a ref on the board: a todo id, <todoId>:<alias>
@@ -459,6 +466,34 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       return;
     }
     fail(`Unknown 'project flows' verb: ${verb}`);
+  }
+  if (sub === "sources") {
+    const [verb, which, ...fields] = rest;
+    const flows: any[] = await api.listFlows(projectId);
+    if (!verb || verb === "all") {
+      const sources: any[] = verb ? await api.listMySources() : await api.listSources(projectId);
+      if (args.json) { console.log(JSON.stringify(sources, null, 2)); return; }
+      for (const s of sources) {
+        const flow = flows.find((f) => f.id === s.flow);
+        const where = [s.projectId !== projectId && `project ${s.projectId}`, flow ? `flow "${flow.name}"` : s.flow ? `flow ${s.flow}` : `group ${s.group}`].filter(Boolean).join(", ");
+        process.stderr.write(`${s.platform}  ${s.name}  ${DIM}→ ${where}${s.url ? `  ${s.url}` : ""}  (${s.id})${RESET}\n`);
+      }
+      if (!sources.length) process.stderr.write(`${DIM}No linked account or public form${verb ? "" : " files into this project (tfa-cli project sources all: every linked account)"}${RESET}\n`);
+      return;
+    }
+    if (verb === "set") {
+      const usage = 'Usage: tfa-cli project sources set <platform|id> flow="<name>" | group=<slug>';
+      const { flow, group, ...other } = parseAssignments(fields);
+      if (!which || !!flow === !!group || Object.keys(other).length) fail(usage);
+      const found = (await api.listMySources()).filter((s: any) => s.id === which || s.platform === which);
+      if (found.length !== 1) fail(found.length ? `${found.length} linked accounts match "${which}": use the id (tfa-cli project sources all)` : `No linked account "${which}". Link one in the app (/slack, /discord, /x, /instagram, /reddit)`);
+      const into = flow ? flows.filter((f) => f.id === flow || f.name === flow) : [];
+      if (flow && into.length !== 1) fail(into.length ? `${into.length} flows are named "${flow}": use the id` : `No flow "${flow}". tfa-cli project flows lists them`);
+      await api.setSourceTarget(projectId, found[0], flow ? { flow: into[0].id } : { group });
+      process.stderr.write(`${GREEN}✅ ${found[0].platform} ${found[0].name} → ${flow ? `flow "${into[0].name}"` : `group ${group}`}${RESET}\n`);
+      return;
+    }
+    fail(`Unknown 'project sources' verb: ${verb}`);
   }
   if (sub === "surfaces") {
     const [verb, ...sargs] = rest;
