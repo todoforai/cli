@@ -623,6 +623,8 @@ Usage:
                                                      Gmail (zele)  Outlook (outlook-api)  Chat (tfa-memory)
                                                    Server-side (--url):
                                                      X LinkedIn Facebook Instagram
+                                                   --account  one Gmail mailbox (default: each signed-in
+                                                              mailbox as its own voice) or Page id
                                                    --dry-run  print the samples as JSONL, store nothing
   tfa-cli brand voice check [<channel>|--all]      Can this device read the channel? tool, login, sample count
   tfa-cli brand voice remove <channel>
@@ -670,10 +672,10 @@ export async function brandCommand(api: ApiClient, positionals: string[], args: 
 }
 
 /** Reads the channel on this device and prints JSONL — no account needed, so the web UI can run it on any host. */
-function dryCollect(channel: string, max: number) {
+function dryCollect(channel: string, max: number, account?: string) {
   const reason = checkChannel(channel);
   if (reason) fail(`${channel}: ${reason}`);
-  const { samples, note } = collectChannel(channel, max);
+  const { samples, note } = collectChannel(channel, max, account);
   for (const x of samples) console.log(JSON.stringify(x));
   process.stderr.write(`${DIM}${samples.length} samples${note ? ` · ${note}` : ""} (not stored)${RESET}\n`);
 }
@@ -701,8 +703,8 @@ export async function voiceDeviceCommand(rest: string[], args: Record<string, an
     process.exit(failed ? 1 : 0);
   }
   if (verb === "collect" && args["dry-run"]) {
-    if (!vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> --dry-run [--max N]");
-    dryCollect(vargs[0], Number(args.max ?? 40));
+    if (!vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> --dry-run [--account <email>] [--max N]");
+    dryCollect(vargs[0], Number(args.max ?? 40), args.account);
     return true;
   }
   return false;
@@ -712,7 +714,7 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
   const [verb, ...vargs] = rest;
   const scope = (args.scope ?? "mine") as VoiceScope;
   if (!["project", "mine"].includes(scope)) fail(`--scope must be mine or project, got '${scope}'`);
-  if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --account <page-id> | --max N] [--dry-run]");
+  if (verb === "collect" && !vargs[0]) fail("Usage: tfa-cli brand voice collect <channel> [--url U | --account <page-id or mailbox> | --max N] [--dry-run]");
   // The voice belongs to the project, not the brand page: no brand is needed to teach or learn it.
 
   // Manual answers are the project's "Manual" voice source: Q → A samples, one bucket.
@@ -745,11 +747,18 @@ async function voiceCommand(api: ApiClient, projectId: string, rest: string[], a
     if (onDevice) {
       const reason = checkChannel(channel);
       if (reason) fail(`${channel}: ${reason}`);
-      process.stderr.write(`${DIM}reading ${channel} on this device…${RESET}\n`);
-      const { samples, note } = collectChannel(channel, Number(args.max ?? 40));
-      if (!samples.length) fail(`${channel}: nothing usable came back${note ? ` (${note})` : ""}`);
-      const { sources } = await api.collectVoiceSource(projectId, channel, { samples, scope });
-      process.stderr.write(`${GREEN}✅ ${channel}: ${samples.length} reply pairs stored (${sources.length} source(s))${RESET}\n`);
+      // A mailbox is a voice: several signed-in accounts are read and stored one by one, never merged.
+      const accounts: (string | undefined)[] = args.account ? [args.account] : ADAPTERS[channel].accounts?.() ?? [undefined];
+      let stored = 0;
+      for (const account of accounts) {
+        process.stderr.write(`${DIM}reading ${channel}${account ? ` ${account}` : ""} on this device…${RESET}\n`);
+        const { samples, note } = collectChannel(channel, Number(args.max ?? 40), account);
+        if (!samples.length) { process.stderr.write(`${RED}${channel}${account ? ` ${account}` : ""}: nothing usable came back${note ? ` (${note})` : ""}${RESET}\n`); continue; }
+        const { sources } = await api.collectVoiceSource(projectId, channel, { samples, account, scope });
+        process.stderr.write(`${GREEN}✅ ${channel}${account ? ` ${account}` : ""}: ${samples.length} reply pairs stored (${sources.length} source(s))${RESET}\n`);
+        stored++;
+      }
+      if (!stored) process.exit(1);
       return;
     }
     const { sources } = await api.collectVoiceSource(projectId, channel, { url: args.url, account: args.account, scope });

@@ -15,7 +15,8 @@ import { execFileSync } from "node:child_process";
 
 export interface VoiceSample { text: string; prompt?: string; at?: string; url?: string }
 export interface CollectResult { samples: VoiceSample[]; note?: string }
-interface Adapter { tool: string; check: () => string | null; collect: (max: number) => CollectResult }
+/** `accounts`: a tool signed into several mailboxes reads each as its own voice (`collect(max, account)`). */
+interface Adapter { tool: string; check: () => string | null; collect: (max: number, account?: string) => CollectResult; accounts?: () => string[] }
 
 const run = (bin: string, args: string[]) =>
   execFileSync(bin, args, { encoding: "utf8", maxBuffer: 256 << 20, timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
@@ -56,11 +57,14 @@ const gmail: Adapter = {
     const who = (() => { try { return run("zele", ["whoami"]); } catch { return ""; } })();
     return /email:/.test(who) ? null : "zele is not signed in (run: zele login --method google)";
   },
-  collect: (max) => {
-    const accounts = [...run("zele", ["whoami"]).matchAll(/email: (\S+)/g)].map((m) => m[1]);
-    const isMe = (from: string) => accounts.some((a) => from.toLowerCase().includes(a.toLowerCase()));
+  accounts: () => [...run("zele", ["whoami"]).matchAll(/email: (\S+)/g)].map((m) => m[1]),
+  collect: (max, only) => {
+    const accounts = gmail.accounts!();
+    if (only && !accounts.some((a) => a.toLowerCase() === only.toLowerCase())) throw new Error(`zele is not signed in as ${only} (signed in: ${accounts.join(", ") || "none"})`);
     const samples: VoiceSample[] = [];
-    for (const account of accounts) {
+    for (const account of only ? [only] : accounts) {
+      // "Me" is this mailbox only: another signed-in address in the thread is someone else's voice.
+      const isMe = (from: string) => (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase() === account.toLowerCase();
       const list = run("zele", ["mail", "search", "from:me", "--limit", String(max), "--account", account]);
       const ids = [...list.matchAll(/^  - id: ([0-9a-f]+)\n(?:.*\n)*?    messages: (\d+)/gm)].filter((m) => Number(m[2]) > 1).map((m) => m[1]);
       for (const id of ids) {
@@ -74,7 +78,7 @@ const gmail: Adapter = {
         }
       }
     }
-    return { samples, note: `${accounts.length} account(s)` };
+    return { samples, note: only ?? `${accounts.length} account(s)` };
   },
 };
 
@@ -165,9 +169,10 @@ export function checkChannel(channel: string): string | null {
 }
 
 /** Read the channel's samples; rows that do not carry a reply are dropped, never synthesised. */
-export function collectChannel(channel: string, max = 40): CollectResult {
+export function collectChannel(channel: string, max = 40, account?: string): CollectResult {
   const a = ADAPTERS[channel];
   if (!a) throw new Error(`No device adapter for ${channel}`);
-  const r = a.collect(Math.min(200, Math.max(1, Math.floor(Number(max) || 40))));
+  if (account && !a.accounts) throw new Error(`${channel} reads one account; drop --account`);
+  const r = a.collect(Math.min(200, Math.max(1, Math.floor(Number(max) || 40))), account);
   return { ...r, samples: r.samples.filter((x) => x.text.trim().length >= MIN_CHARS) };
 }
