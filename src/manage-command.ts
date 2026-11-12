@@ -125,6 +125,7 @@ Usage:
                                                    A note (markdown text). Seen by
                                                    whoever sees where it sits: standalone = the project,
                                                    group = its members, your My Private group = only you.
+                                                   Read/append/edit notes by title: tfa-cli notes help
   tfa-cli project surfaces rm <id>                 Take it off the board
 
 Examples:
