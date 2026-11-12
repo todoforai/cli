@@ -9,7 +9,7 @@ import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice
 import { readFileSync } from "fs";
 import { randomUUID } from "node:crypto";
 import { readStdin } from "./input";
-import { MANUAL_CHANNEL, manualAnswersOf, manualSamples, voiceNamesOf } from "@shared/fbe";
+import { MANUAL_CHANNEL, NEVER_SCHEDULED_TIMESTAMP, manualAnswersOf, manualSamples, voiceNamesOf } from "@shared/fbe";
 
 export function printTodoHelp() {
   process.stderr.write(`
@@ -31,7 +31,8 @@ Fields (PUT /todos/{id}):
   title            first-line content (alias: content)
   group            group slug; "" makes it ungrouped (alias: groupTag)
   star             true|false (starredAt now / 0)
-  schedule         unix ms timestamp, 0 = immediate (alias: scheduledTimestamp)
+  schedule         when its queued first message runs: "YYYY-MM-DD HH:MM" (local), +30m/+2h/+1d,
+                   unix ms; now (= start-now, also 0) runs it; none|draft parks it unstarted
   agent            agentSettingsId (alias: agentSettingsId)
   public           true|false — refused from an agent shell (isPublic)
   kind             task|info — promote an ⓘ info row to a task (or back)
@@ -168,6 +169,31 @@ function parseMoment(value: unknown, field: string): [number, boolean] {
   return [at, true];
 }
 
+const SCHEDULE_FORMATS = 'none|draft, now, +30m/+2h/+1d, "YYYY-MM-DD HH:MM" or unix ms';
+const MAX_START_MS = 2 * 365 * 86_400_000; // the backend's limit (WaitService)
+const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 };
+
+/** A start time → unix ms, NEVER_SCHEDULED_TIMESTAMP (a draft, never started by itself) or "now". */
+export function parseSchedule(value: unknown): number | "now" {
+  if (value === "none" || value === "draft") return NEVER_SCHEDULED_TIMESTAMP;
+  if (value === "now" || value === 0 || value === "0") return "now";
+  const rel = String(value).match(/^\+(\d+)([mhd])$/);
+  const [at, timed] = rel ? [Date.now() + Number(rel[1]) * UNIT_MS[rel[2]], true]
+    : /^\d{10,}$/.test(String(value)) ? [Number(value), true]
+    : /^\d{4}-/.test(String(value)) ? parseMoment(value, "schedule") : [0, false];
+  if (!timed) fail(`schedule must be one of: ${SCHEDULE_FORMATS} (a bare day has no time)`);
+  if (!(at < Date.now() + MAX_START_MS)) fail("schedule can be at most 2 years ahead (or none for a draft)");
+  if (at < Date.now() - 60_000) fail(`schedule ${new Date(at).toLocaleString()} is in the past (use now to start it)`);
+  return at;
+}
+
+/** Press Start on a todo's queued first message (a draft or a scheduled one): it runs now. */
+export async function startNow(api: ApiClient, todoId: string) {
+  const todo = await api.getTodo(todoId);
+  if (todo.status !== "PAUSED" && todo.status !== "SCHEDULED") fail(`Nothing to start: ${todoId} is ${todo.status}, not a draft or scheduled todo`);
+  await api.updateAndStart(todoId, todo.agentSettings || await api.getAgentSettings(todo.agentSettingsId));
+}
+
 const NO_PROJECT = "No project — pass --project <id> or set TODOFORAI_PROJECT_ID";
 
 function fail(msg: string): never {
@@ -260,9 +286,12 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   }
   if ("startDate" in updates) [updates.startDate, updates.startTimed] = parseMoment(updates.startDate, "start");
   if ("endDate" in updates) [updates.endDate, updates.endTimed] = parseMoment(updates.endDate, "deadline");
-  await api.updateTodo(todoId, updates);
-  if (args.json) { console.log(JSON.stringify({ todoId, ...updates })); return; }
-  process.stderr.write(`${GREEN}✅ ${todoId} updated: ${Object.keys(updates).join(", ")}${RESET}\n`);
+  const now = "scheduledTimestamp" in updates && (updates.scheduledTimestamp = parseSchedule(updates.scheduledTimestamp)) === "now";
+  if (now) delete updates.scheduledTimestamp;
+  if (Object.keys(updates).length) await api.updateTodo(todoId, updates);
+  if (now) await startNow(api, todoId);
+  if (args.json) { console.log(JSON.stringify({ todoId, ...updates, ...(now && { started: true }) })); return; }
+  process.stderr.write(`${GREEN}✅ ${todoId} updated: ${[...Object.keys(updates), ...(now ? ["started"] : [])].join(", ")}${RESET}\n`);
 }
 
 export async function projectCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId?: string) {

@@ -21,6 +21,8 @@ Usage: tfa-cli [OPTIONS] ["prompt"]
 Examples:
   tfa-cli login                          # Browser-based device auth
   tfa-cli "prompt text"                  # New todo
+  tfa-cli --draft "prompt"              # New todo, not started (start later: start-now <id>)
+  tfa-cli --schedule "2026-11-13 09:00" "prompt"  # New todo, starts then (also +30m/+2h/+1d)
   echo "content" | tfa-cli              # From stdin
   tfa-cli start <id>                    # Registry template
   tfa-cli acp                           # Agent Client Protocol (stdio)
@@ -38,6 +40,7 @@ Examples:
   tfa-cli update                        # Update tfa-cli itself (also auto-updates in background; NO_UPDATE_NOTIFIER=1 disables)
   tfa-cli delete <todo-id>              # Move a todo to the Trash (restorable 30 days)
   tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
+  tfa-cli start-now <todo-id>           # Start a draft / scheduled todo now
   tfa-cli show <file|-> [todo-id]     # Render a local file (image/pdf/html…) in the chat; - = stdin
   tfa-cli show list|ref|rm …          # List / re-surface / take down shown files
   tfa-cli open <url> [todo-id]        # Live url preview in the chat
@@ -69,7 +72,11 @@ Options:
   --dangerously-skip-permissions  CLI auto-approves every block
   --allow-all                     Agent permissions allow:*:* — nothing ever asks
   --raw-sysmsg <file>             Use file contents verbatim as system prompt (new TODO only)
-  --no-watch                      Create todo and exit
+  --no-watch                      Create todo and exit (it starts right away)
+  --draft                         Create todo, don't start it, exit (also with --template)
+  --schedule <when>               Create todo, start it then, exit: "YYYY-MM-DD HH:MM" (local),
+                                  +30m/+2h/+1d or unix ms (also with --template).
+                                  Reschedule: todo set <id> schedule=<when>|none|now
   --isolated                      Agent sees ONLY this machine + dir (no cloud VM/other devices); ends with CLI
   --no-bridge                     Do not auto-spawn bridge
   --json
@@ -211,6 +218,8 @@ export function parseCliArgs() {
       "allow-all": { type: "boolean", default: false },
       "raw-sysmsg": { type: "string" },
       "no-watch": { type: "boolean", default: false },
+      draft: { type: "boolean", default: false },
+      schedule: { type: "string" },
       isolated: { type: "boolean", default: false },
       "debug-dump": { type: "boolean", default: false },
       "no-bridge": { type: "boolean", default: false },

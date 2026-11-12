@@ -19,7 +19,7 @@ try {
   if (process.argv[2] !== "update") backgroundUpdate(ownPkg!);
 } catch {}
 import { ApiClient, restBasePath, FrontendWebSocket, type RegistrySpec } from "@shared/api";
-import { qualifiedModelIds, getMimeTypeFromFilename, truncatedImageReason, unseenStatus } from "@shared/fbe";
+import { qualifiedModelIds, getMimeTypeFromFilename, truncatedImageReason, unseenStatus, NEVER_SCHEDULED_TIMESTAMP } from "@shared/fbe";
 import { normalizeApiUrl } from "@shared/credentials";
 
 import { DEFAULT_API_URL, VERSION, getEnv, printUsage, printStatusHelp, printShowHelp, parseCliArgs } from "./args";
@@ -42,6 +42,7 @@ import { inboxCommand, notifyCommand, printInboxHelp, printNotifyHelp } from "./
 import { importCommand, printImportHelp } from "./import-command";
 import { memoryCommand, printMemoryHelp } from "./memory-command";
 import { notesCommand, printNotesHelp } from "./notes-command";
+import { parseSchedule, startNow } from "./manage-command";
 import { createHash, randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
 import { spawnMayflyBridge } from "./isolated";
@@ -146,6 +147,14 @@ async function interactiveLoop(
   }
 }
 
+/** How a --draft / --schedule todo will start (stderr; stdout stays `created <id>`). */
+function describeStart(startAt?: number) {
+  if (!startAt) return;
+  process.stderr.write(`${DIM}${startAt === NEVER_SCHEDULED_TIMESTAMP
+    ? "draft, not started (start it: tfa-cli start-now <id>)"
+    : `starts ${new Date(startAt).toLocaleString()} (move it: tfa-cli todo set <id> schedule=…)`}${RESET}\n`);
+}
+
 /** Append a message to an existing todo (restarts its run). A signal while the
  *  request is in flight waits for it (see trackStart). */
 async function appendTracked(api: ApiClient, ws: FrontendWebSocket, projectId: string, text: string, agent: any, todoId: string) {
@@ -211,6 +220,21 @@ async function main() {
   // ── flag compatibility — validated ONCE here, so no later branch can
   // silently ignore a flag (e.g. --template returning before an --isolated
   // check would fake isolation without providing it) ──
+  // --draft / --schedule create the todo and exit: its run starts later, not under this CLI.
+  if (args.draft || args.schedule !== undefined) {
+    if (args.draft && args.schedule !== undefined) {
+      process.stderr.write("Error: --draft and --schedule exclude each other (a draft has no start time)\n");
+      process.exit(2);
+    }
+    if (args.resume || args.continue || args.isolated || (positionals[0] && positionals[0] !== "start" && !/\s/.test(positionals[0]))) {
+      process.stderr.write("Error: --draft/--schedule only create a new todo (tfa-cli [--template <id>] \"prompt\"); reschedule one with: todo set <id> schedule=<when>\n");
+      process.exit(2);
+    }
+    args["no-watch"] = true;
+  }
+  const scheduledTimestamp = args.draft ? NEVER_SCHEDULED_TIMESTAMP
+    : args.schedule !== undefined ? parseSchedule(args.schedule) : undefined;
+  const startAt = scheduledTimestamp === "now" ? undefined : scheduledTimestamp;
   if (args.isolated) {
     if (args.resume || args.continue) {
       process.stderr.write("Error: --isolated cannot be combined with --resume/--continue (isolation binds at create)\n");
@@ -369,6 +393,13 @@ async function main() {
     if (!todoId) { process.stderr.write(`${RED}Usage: tfa-cli delete <todo-id>${RESET}\n`); process.exit(2); }
     await api.deleteTodo(todoId);
     process.stderr.write(`${GREEN}✅ Deleted ${todoId}${RESET}\n`);
+    return;
+  }
+  if (positionals[0] === "start-now") {
+    const todoId = await rid(positionals[1]);
+    if (!todoId) { process.stderr.write(`${RED}Usage: tfa-cli start-now <todo-id>${RESET}\n`); process.exit(2); }
+    await startNow(api, todoId);
+    process.stderr.write(`${GREEN}✅ Started ${todoId}${RESET}\n`);
     return;
   }
   if (positionals[0] === "addmessage") {
@@ -718,6 +749,7 @@ async function main() {
       ...(content ? { content } : {}),
       ...(groupTag ? { groupTag } : {}),
       ...(groupName ? { groupName } : {}),
+      ...(startAt ? { scheduledTimestamp: startAt } : {}),
     });
     const todoId = todo.id;
     cfgScope.setLastTodoId(todoId);
@@ -729,6 +761,7 @@ async function main() {
     } else if (args["no-watch"]) {
       // --no-watch: this is the whole output — confirm start on stdout for machine callers
       console.log(`created ${todoId}`);
+      describeStart(startAt);
     } else {
       process.stderr.write(`${DIM}TODO:${RESET} ${CYAN}${frontendUrl}${RESET}\n`);
     }
@@ -972,7 +1005,7 @@ async function main() {
   cfg.addToHistory(content);
   // From here on the run exists server-side: an exit detaches (--isolated: stops).
   // A signal while the create is in flight waits for it (see trackStart).
-  const created = api.addMessage(projectId, content, agent, isolatedTodoId, undefined, undefined, groupTag || undefined, groupName);
+  const created = api.addMessage(projectId, content, agent, isolatedTodoId, undefined, startAt, groupTag || undefined, groupName);
   if (ws) trackStart(ws, projectId, created.then((t: any) => t.id));
   let todo: any;
   try {
@@ -1000,6 +1033,7 @@ async function main() {
   } else if (!ws) {
     // --no-watch: this is the whole output — confirm start on stdout for machine callers
     console.log(`created ${actualTodoId}`);
+    describeStart(startAt);
   } else {
     process.stderr.write(`${DIM}TODO:${RESET} ${CYAN}${frontendUrl}${RESET}\n`);
   }
