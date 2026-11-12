@@ -40,6 +40,8 @@ Fields (PUT /todos/{id}):
   state            one of the project's own states (project states); also sets its base status; "" clears
   deadline         YYYY-MM-DD (whole day) or "YYYY-MM-DD HH:MM" (local time); "" clears (alias: end)
   start            YYYY-MM-DD planned start; "" clears
+  parent           parent todo id (same project; not itself or one of its subtodos); "" detaches (alias: parentTodoId)
+  assignee         one project member, by email or user id (project members); "" unassigns (alias: assigneeId)
 
   tfa-cli todo message <todo-id|-> <message-id> <field=value>…
                    Edit a SCHEDULED (not yet run) message: content, schedule (unix ms;
@@ -58,6 +60,7 @@ Examples:
   tfa-cli todo set 3f2a91 star=true
   tfa-cli todo set 3f2a91 section="To pay"        (one of its group's sections; section="" takes it out)
   tfa-cli todo set - deadline=2026-11-20 start="2026-11-10 09:00"
+  tfa-cli todo set 3f2a91 parent=52614dd2 assignee=gabor@example.com
   tfa-cli todo comment - "Asked by Gábor; waits for the Q3 numbers"
   tfa-cli todo message - 8c1d… schedule=1760000000000
   tfa-cli status <todo-id> DONE                  (status has its own command)
@@ -149,6 +152,8 @@ const TODO_ALIASES: Record<string, string> = {
   deadline: "endDate",
   end: "endDate",
   start: "startDate",
+  parent: "parentTodoId",
+  assignee: "assigneeId",
 };
 
 /** YYYY-MM-DD → its UTC midnight (a calendar day, the same for every timezone); "" / 0 clears. */
@@ -195,6 +200,13 @@ export async function startNow(api: ApiClient, todoId: string) {
 }
 
 const NO_PROJECT = "No project — pass --project <id> or set TODOFORAI_PROJECT_ID";
+
+/** A member email → their user id, among the members of the todo's project. */
+async function memberIdByEmail(api: ApiClient, todoId: string, email: string): Promise<string> {
+  const { projectId } = await api.getTodo(todoId);
+  const members: { id: string; email?: string }[] = await api.getProjectMembers(projectId);
+  return members.find(m => m.email?.toLowerCase() === email.toLowerCase())?.id ?? fail(`No project member with email ${email} (tfa-cli project members)`);
+}
 
 function fail(msg: string): never {
   process.stderr.write(`${RED}${msg}${RESET}\n`);
@@ -286,6 +298,8 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   }
   if ("startDate" in updates) [updates.startDate, updates.startTimed] = parseMoment(updates.startDate, "start");
   if ("endDate" in updates) [updates.endDate, updates.endTimed] = parseMoment(updates.endDate, "deadline");
+  if (updates.parentTodoId) updates.parentTodoId = await api.resolveTodoId(String(updates.parentTodoId));
+  if (typeof updates.assigneeId === "string" && updates.assigneeId.includes("@")) updates.assigneeId = await memberIdByEmail(api, todoId, updates.assigneeId);
   const now = "scheduledTimestamp" in updates && (updates.scheduledTimestamp = parseSchedule(updates.scheduledTimestamp)) === "now";
   if (now) delete updates.scheduledTimestamp;
   if (Object.keys(updates).length) await api.updateTodo(todoId, updates);
