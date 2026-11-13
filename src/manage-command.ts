@@ -23,9 +23,9 @@ Usage:
   tfa-cli todo html <todo-id|-> [file|-]        Its row HTML: no file = print it; a file / - (stdin)
                                                 = replace it; --rm = remove it (see below)
   tfa-cli todo restore <todo-id>                Bring a trashed todo back (undo of 'delete')
-  tfa-cli todo flow <todo-id|->                 Where it stands in its flow, where it can go from here
-  tfa-cli todo next <todo-id|-> ["outcome"]     Finish its step: on to the next one, or along the
-                                                route "outcome"; during its own run: when it ends
+  tfa-cli todo workflow <todo-id|->             Where it stands in its workflow run, the ways on from here
+  tfa-cli todo next <todo-id|-> ["outcome"]     Finish its node: plain done, or along the line named
+                                                "outcome"; during its own agent run: when that ends
 
 Fields (PUT /todos/{id}):
   title            first-line content (alias: content)
@@ -89,37 +89,19 @@ Usage:
   tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
                                                    Public intake: autoStart maxSubmissions postIpLimit placeholder agentSettingsId
   tfa-cli project groups reorder <slug>…           Set wall order
-  tfa-cli project groups step <slug> [agent=on|off] [process="…"]
-                                                   The group as a flow's step: who does it (agent=on: its
-                                                   agent starts on every item that arrives; off: a person)
-                                                   and what happens there (process, the agent's instruction).
-                                                   No field: show it.
   tfa-cli project states                           The project's own todo states (name + lucide icon on a base status)
   tfa-cli project states set <slug> <field=value>… Create/update one: name icon (lucide.dev/icons name, e.g. thumbs-down)
                                                    color (#rrggbb, "" = the base status' color)
                                                    base (READY|REVIEW_REQUESTED|DONE|CANCELLED|REJECTED)
   tfa-cli project states drop <slug>               Remove one (todos in it fall back to their status)
-  tfa-cli project flows                            Flows: boxes (steps) and the lines items go along
-  tfa-cli project flows set "<name>" <step>…       Create/replace a flow as a row: each step goes on to the
-                                                   next (same name = replace). A step is a group (its slug or
-                                                   its name); a name no group has makes a new column. Outcome
-                                                   jumps: <step>:<outcome>=<step>[:…]
-  tfa-cli project flows link "<name>" <from> <to> ["<outcome>"]
-                                                   Draw a line: items finished in <from> go to <to> (a new
-                                                   <to> joins the flow, its column is made). With an outcome
-                                                   it is a branch, taken by "tfa-cli todo next - <outcome>".
-                                                   <to> as "flow:<other flow>": the item goes on in that flow,
-                                                   at its first step (flows chained one after the other).
-  tfa-cli project flows unlink "<name>" <from> <to>   Remove that line
-  tfa-cli project flows drop "<name>" <step>       Take a step out, with its lines
-  tfa-cli project flows rm "<name>"                Delete a flow (its todos stay where they are)
+  (workflows: tfa-cli workflow --help)
   tfa-cli project sources                          What brings items in from outside besides tfa-wait triggers:
                                                    your linked accounts (Slack, Discord, X, Instagram, Reddit)
-                                                   and the project's public forms, each with the flow or
-                                                   group it fills ("sources all": your accounts in any project)
-  tfa-cli project sources set <platform|id> flow="<name>" | group=<slug>
-                                                   Point a linked account at a flow (items land in its first
-                                                   step, as its items) or at a group
+                                                   and the project's public forms, each with the workflow
+                                                   or group it fills ("sources all": your accounts in any project)
+  tfa-cli project sources set <platform|id> workflow="<name>" | group=<slug>
+                                                   Point a linked account at a workflow (its items start
+                                                   runs at its source trigger) or at a group
   tfa-cli project surfaces                         List the board's cards you can see: id, title, ref|note, group, color
   tfa-cli project surfaces set <id> ref=<ref> [title=…] [group=<slug>] [color=#hex] [order=N]
                                                    Show a ref on the board: a todo id, <todoId>:<alias>
@@ -137,8 +119,6 @@ Examples:
   tfa-cli project set name="Q4 launch"
   tfa-cli project groups set marketing name=Marketing description="Top-of-funnel work"
   tfa-cli project groups reorder marketing sales ops
-  tfa-cli project flows set "Számlakezelés" Számlák Jóváhagyás Utalás
-  tfa-cli project flows link "Számlakezelés" Jóváhagyás Visszaküldés rejected
   tfa-cli project surfaces set weekly-kpis ref=$TODOFORAI_TODO_ID:kpi title="Weekly KPIs" group=marketing
   tfa-cli project surfaces set sales-rules body="Quote prices in EUR, net of VAT." group=sales
 `);
@@ -272,21 +252,23 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   if (sub === "next") {
     if (!todoId) fail('Usage: tfa-cli todo next <todo-id|-> ["outcome"]');
     const outcome = rest.join(" ").trim() || undefined;
-    const r = await api.flowNext(todoId, outcome);
+    const r = await api.workflowNext(todoId, outcome);
     if (args.json) { console.log(JSON.stringify(r)); return; }
-    const where = r.to !== undefined ? `on to ${r.toName}` : "done: the end of its flow";
-    process.stderr.write(`${GREEN}✅ ${r.pending ? `goes ${where} when this run ends` : where}${RESET}\n`);
+    const where = r.to !== undefined ? `on to ${r.toTitle ?? r.to}` : "done: the end of its run";
+    process.stderr.write(`${GREEN}✅ ${r.pending ? `goes ${where} when this agent run ends` : where}${RESET}\n`);
     return;
   }
-  if (sub === "flow") {
-    if (!todoId) fail("Usage: tfa-cli todo flow <todo-id|->");
-    const pos: any = await api.flowPosition(todoId);
+  if (sub === "workflow" || sub === "flow") {
+    if (!todoId) fail("Usage: tfa-cli todo workflow <todo-id|->");
+    const pos: any = await api.workflowPosition(todoId);
     if (args.json) { console.log(JSON.stringify(pos, null, 2)); return; }
-    if (!pos) { process.stderr.write(`${DIM}Not in a flow${RESET}\n`); return; }
+    if (!pos) { process.stderr.write(`${DIM}Not in a workflow${RESET}\n`); return; }
     const mark: Record<string, string> = { done: "✓ ", here: "▶ ", next: "" };
-    process.stderr.write(`${pos.flowName}: ${pos.steps.map((s: any) => `${mark[s.state]}${s.name}`).join(" › ")}\n`);
-    for (const m of pos.moves) process.stderr.write(`  ${m.when ? `"${m.when}"` : "done"} → ${m.toName ?? "end (done)"}${m.toFlow ? `, on in the flow "${m.toFlow}"` : ""}${m.to ? ` ${DIM}(${m.to})${RESET}` : ""}\n`);
-    if (pos.pending !== undefined) process.stderr.write(`${DIM}picked: ${pos.pending || "done"} (goes when the run ends)${RESET}\n`);
+    const others: any[] = pos.moves.some((m: any) => m.toWorkflow) ? await api.listWorkflows((await api.getTodo(todoId)).projectId) : [];
+    const wfName = (id: string) => others.find((w) => w.id === id)?.name ?? id;
+    process.stderr.write(`${pos.workflowName}: ${pos.steps.map((s: any) => `${mark[s.state]}${s.title}`).join(" › ")}${pos.node ? "" : `  ${DIM}(ended)${RESET}`}\n`);
+    for (const m of pos.moves) process.stderr.write(`  ${m.label ? `[${m.label}]` : m.when ? `"${m.when}"` : "done"} → ${m.toTitle ?? "end"}${m.toWorkflow ? `, on in the workflow "${wfName(m.toWorkflow)}"` : ""}${m.to ? ` ${DIM}(${m.to})${RESET}` : ""}\n`);
+    if (pos.pending !== undefined) process.stderr.write(`${DIM}picked: ${pos.pending || "done"} (goes when the agent run ends)${RESET}\n`);
     return;
   }
   if (sub !== "set") { printTodoHelp(); process.exit(sub ? 2 : 0); }
@@ -386,23 +368,6 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       process.stderr.write(`${GREEN}✅ ${sections[at]} → ${to}${RESET}\n`);
       return;
     }
-    if (verb === "step") {
-      const [slug, ...fields] = gargs;
-      if (!slug) fail('Usage: tfa-cli project groups step <slug> [agent=on|off] [process="…"]');
-      const { workflow } = await api.getGroupWorkflow(projectId, slug);
-      const { agent, process: steps, ...unknown } = parseAssignments(fields);
-      if (Object.keys(unknown).length) fail(`Unknown field: ${Object.keys(unknown).join(", ")} (agent, process)`);
-      const { updatedAt: _at, updatedBy: _by, ...next } = workflow;
-      if (agent !== undefined) {
-        if (![true, false, "on", "off"].includes(agent)) fail("agent=on|off");
-        if (agent === true || agent === "on") next.agent = true; else delete next.agent;
-      }
-      if (steps !== undefined) next.process = String(steps);
-      const saved = fields.length ? (await api.setGroupWorkflow(projectId, slug, next)).workflow : workflow;
-      if (args.json) { console.log(JSON.stringify(saved, null, 2)); return; }
-      process.stderr.write(`${fields.length ? `${GREEN}✅ step ${slug} saved${RESET}\n` : ""}${slug}  ${saved.agent ? "its agent does it" : "a person does it"}\n${DIM}${saved.process ?? ""}${RESET}\n`);
-      return;
-    }
     if (verb === "intake") {
       const [slug, ...options] = gargs;
       if (!slug) fail("Usage: tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…");
@@ -454,121 +419,31 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
     process.stderr.write(`${GREEN}✅ state ${slug} ${verb === "drop" ? "removed" : "saved"}${RESET}\n`);
     return;
   }
-  if (sub === "flows") {
-    const [verb, name, ...steps] = rest;
-    const flows: any[] = await api.listFlows(projectId);
-    const matches = flows.filter((f) => f.name === name || f.id === name);
-    if (matches.length > 1) fail(`${matches.length} flows are named "${name}": use the id (tfa-cli project flows --json)`);
-    const named = matches[0];
-    // A line's end as shown: a step's slug, or the flow it goes on in.
-    const end = (to: string) => { const f = to.startsWith("flow:") && flows.find((x) => x.id === to.slice(5)); return f ? `flow "${f.name}"` : to; };
-    // "flow:<name or id>" as written: the line leaves for that flow.
-    const onward = (word: string): string | undefined => {
-      if (!word.startsWith("flow:")) return undefined;
-      const called = word.slice(5).trim();
-      const found = flows.filter((f) => f.id === called || f.name === called);
-      if (found.length !== 1) fail(found.length ? `${found.length} flows are named "${called}": use the id` : `No flow "${called}". tfa-cli project flows lists them`);
-      return `flow:${found[0].id}`;
-    };
-    const lines = (f: any) => [
-      ...f.links.map((l: any) => `  ${l.from} → ${end(l.to)}${l.when ? `  ${DIM}(${l.when})${RESET}` : ""}`),
-      ...f.steps.filter((s: any) => !f.links.some((l: any) => l.from === s.group || l.to === s.group)).map((s: any) => `  ${s.group}`),
-    ].join("\n");
-    if (!verb) {
-      if (args.json) { console.log(JSON.stringify(flows, null, 2)); return; }
-      for (const f of flows) process.stderr.write(`${f.name}${f.steps[0] ? ` ${DIM}(starts at ${f.steps[0].group})${RESET}` : ""}\n${lines(f)}\n`);
-      if (!flows.length) process.stderr.write(`${DIM}No flows yet${RESET}\n`);
-      return;
-    }
-    // A step as written: a group's slug or name; a name no group has is a new step (its column is made with the flow).
-    const groups: any[] = ["set", "link", "unlink", "drop"].includes(verb) ? await api.listProjectGroups(projectId) : [];
-    const fresh = new Map<string, { group: string; name: string }>();
-    const step = (token: string): { group: string; name?: string } => {
-      const word = token.trim();
-      if (!word) fail("An empty step");
-      const g = groups.find((x) => x.slug === word) ?? groups.find((x) => x.name.toLowerCase() === word.toLowerCase());
-      if (g) return { group: g.slug };
-      if (!fresh.has(word.toLowerCase())) fresh.set(word.toLowerCase(), { group: `c-${randomUUID().slice(0, 4)}`, name: word });
-      return fresh.get(word.toLowerCase())!;
-    };
-    const save = async (flow: { id?: string; name: string; steps: any[]; links?: any[] }, did: string) => {
-      const saved = await api.setFlow(projectId, flow);
-      if (args.json) { console.log(JSON.stringify(saved, null, 2)); return; }
-      process.stderr.write(`${GREEN}✅ flow "${saved.name}" ${did}${RESET}\n${lines(saved)}\n`);
-    };
-    if (verb === "set") {
-      if (!name || !steps.length) fail('Usage: tfa-cli project flows set "<name>" <step>…  (step: a group\'s slug or name, or a new name; jumps: <step>:<outcome>=<step>)');
-      if (steps.some((token) => token.includes("flow:"))) fail('A row of steps stays in its flow. Send it on into another with: tfa-cli project flows link "<name>" <from> "flow:<other flow>"');
-      const parsed = steps.map((token) => {
-        const [group, ...routes] = token.split(":");
-        return { ...step(group), ...(routes.length && { routes: routes.map((r) => { const [when, to] = r.split("="); if (!when || !to) fail(`Bad jump in ${token}: write <outcome>=<step>`); return { when, to }; }) }) };
-      });
-      // Jump targets are steps of the row, as written.
-      const slug = (word: string) => { const s = step(word); if (!parsed.some((p) => p.group === s.group)) fail(`A jump goes to a step of the flow: ${word}`); return s.group; };
-      for (const p of parsed) for (const r of p.routes ?? []) r.to = slug(r.to);
-      // Addressed by id: it keeps its name.
-      await save({ ...(named && { id: named.id }), name: named?.id === name ? named.name : name, steps: parsed }, named ? "replaced" : "created");
-      return;
-    }
-    if (verb === "link" || verb === "unlink" || verb === "drop") {
-      if (!named) fail(`No flow "${name ?? ""}". tfa-cli project flows lists them`);
-      const [a, b, ...why] = steps;
-      const kept = named.steps.map((s: any) => ({ group: s.group, x: s.x, y: s.y }));
-      const inFlow = (word: string) => { const s = step(word); if (!kept.some((k: any) => k.group === s.group)) fail(`Not a step of "${named.name}": ${word}`); return s.group; };
-      if (verb === "drop") {
-        if (!a || b) fail('Usage: tfa-cli project flows drop "<name>" <step>');
-        const gone = inFlow(a);
-        await save({ id: named.id, name: named.name, steps: kept.filter((k: any) => k.group !== gone), links: named.links.filter((l: any) => l.from !== gone && l.to !== gone) }, `: ${a} taken out`);
-        return;
-      }
-      if (!a || !b) fail(`Usage: tfa-cli project flows ${verb} "<name>" <from> <to>${verb === "link" ? ' ["<outcome>"]' : ""}`);
-      const from = inFlow(a);
-      if (verb === "unlink") {
-        // A line as listed (to a flow not shown to you, by its id) is taken as written.
-        const to = named.links.some((l: any) => l.from === from && l.to === b) ? b : onward(b) ?? inFlow(b);
-        if (!named.links.some((l: any) => l.from === from && l.to === to)) fail(`No line ${a} → ${b}`);
-        await save({ id: named.id, name: named.name, steps: kept, links: named.links.filter((l: any) => !(l.from === from && l.to === to)) }, `: line ${a} → ${b} removed`);
-        return;
-      }
-      const to = onward(b) ? { group: onward(b)! } : step(b);
-      const when = why.join(" ").trim() || undefined;
-      // One line per outcome out of a step (and one for plain done): a new one replaces it.
-      const links = [...named.links.filter((l: any) => !(l.from === from && (l.when ?? "") === (when ?? ""))), { from, to: to.group, ...(when && { when }) }];
-      await save({ id: named.id, name: named.name, steps: onward(b) || kept.some((k: any) => k.group === to.group) ? kept : [...kept, to], links }, `: ${a} → ${b}${when ? ` (${when})` : ""}`);
-      return;
-    }
-    if (verb === "rm") {
-      if (!named) fail(`No flow "${name ?? ""}". tfa-cli project flows lists them`);
-      await api.deleteFlow(projectId, named.id);
-      process.stderr.write(`${GREEN}✅ flow "${named.name}" deleted${RESET}\n`);
-      return;
-    }
-    fail(`Unknown 'project flows' verb: ${verb}`);
-  }
+  if (sub === "flows") fail("Flows are workflows now: tfa-cli workflow --help");
   if (sub === "sources") {
     const [verb, which, ...fields] = rest;
-    const flows: any[] = await api.listFlows(projectId);
+    const flows: any[] = await api.listWorkflows(projectId);
     if (!verb || verb === "all") {
       const sources: any[] = verb ? await api.listMySources() : await api.listSources(projectId);
       if (args.json) { console.log(JSON.stringify(sources, null, 2)); return; }
       for (const s of sources) {
         const flow = flows.find((f) => f.id === s.flow);
-        const where = [s.projectId !== projectId && `project ${s.projectId}`, flow ? `flow "${flow.name}"` : s.flow ? `flow ${s.flow}` : `group ${s.group}`].filter(Boolean).join(", ");
+        const where = [s.projectId !== projectId && `project ${s.projectId}`, flow ? `workflow "${flow.name}"` : s.flow ? `workflow ${s.flow}` : `group ${s.group}`].filter(Boolean).join(", ");
         process.stderr.write(`${s.platform}  ${s.name}  ${DIM}→ ${where}${s.url ? `  ${s.url}` : ""}  (${s.id})${RESET}\n`);
       }
       if (!sources.length) process.stderr.write(`${DIM}No linked account or public form${verb ? "" : " files into this project (tfa-cli project sources all: every linked account)"}${RESET}\n`);
       return;
     }
     if (verb === "set") {
-      const usage = 'Usage: tfa-cli project sources set <platform|id> flow="<name>" | group=<slug>';
-      const { flow, group, ...other } = parseAssignments(fields);
+      const usage = 'Usage: tfa-cli project sources set <platform|id> workflow="<name>" | group=<slug>';
+      const { workflow: flow, group, ...other } = parseAssignments(fields);
       if (!which || !!flow === !!group || Object.keys(other).length) fail(usage);
       const found = (await api.listMySources()).filter((s: any) => s.id === which || s.platform === which);
       if (found.length !== 1) fail(found.length ? `${found.length} linked accounts match "${which}": use the id (tfa-cli project sources all)` : `No linked account "${which}". Link one in the app (/slack, /discord, /x, /instagram, /reddit)`);
       const into = flow ? flows.filter((f) => f.id === flow || f.name === flow) : [];
-      if (flow && into.length !== 1) fail(into.length ? `${into.length} flows are named "${flow}": use the id` : `No flow "${flow}". tfa-cli project flows lists them`);
+      if (flow && into.length !== 1) fail(into.length ? `${into.length} workflows are named "${flow}": use the id` : `No workflow "${flow}". tfa-cli workflow lists them`);
       await api.setSourceTarget(projectId, found[0], flow ? { flow: into[0].id } : { group });
-      process.stderr.write(`${GREEN}✅ ${found[0].platform} ${found[0].name} → ${flow ? `flow "${into[0].name}"` : `group ${group}`}${RESET}\n`);
+      process.stderr.write(`${GREEN}✅ ${found[0].platform} ${found[0].name} → ${flow ? `workflow "${into[0].name}"` : `group ${group}`}${RESET}\n`);
       return;
     }
     fail(`Unknown 'project sources' verb: ${verb}`);
