@@ -130,6 +130,7 @@ Usage:
                                                    whoever sees where it sits: standalone = the project,
                                                    group = its members, your My Private group = only you.
                                                    Read/append/edit notes by title: tfa-cli notes help
+                                                   Widgets (ref cards) by title, read/update their show: tfa-cli widgets help
   tfa-cli project surfaces rm <id>                 Take it off the board
 
 Examples:

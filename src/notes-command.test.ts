@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'bun:test';
 import { findNote, notesCommand } from './notes-command';
+import { matchScore } from './title-match';
 
 const notes = [
   { id: 'note-1', title: 'vide hack', body: 'https://x.com/a\nr' },
@@ -16,6 +17,8 @@ test('findNote matches a dictation typo, accents and substrings', () => {
   expect(findNote(plain, 'bevasarlas').id).toBe('note-3');
   expect(findNote(plain, 'video').id).toBe('note-2');
   expect(findNote(plain, 'vibe').id).toBe('note-1');
+  expect(findNote(plain, 'hack vibe').id).toBe('note-1');
+  expect(plain.map((n: any) => matchScore(n.id, n.title ?? '', 'kutya'))).toEqual([undefined, undefined, undefined]);
   expect(findNote(plain, 'vide hack', true).id).toBe('note-1');
 });
 
