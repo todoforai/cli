@@ -2,8 +2,9 @@
 
 import { randomUUID } from "node:crypto";
 import type { ApiClient } from "@shared/api";
-import { DIM, GREEN, RED, RESET } from "./colors";
+import { DIM, GREEN, RESET } from "./colors";
 import { readStdin } from "./input";
+import { fail, findByTitle, matchScore } from "./title-match";
 
 export function printNotesHelp() {
   process.stderr.write(`
@@ -28,42 +29,11 @@ Examples:
 `);
 }
 
-const fail = (msg: string): never => { process.stderr.write(`${RED}${msg}${RESET}\n`); process.exit(2); };
 
-const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 export const noteTitle = (n: any): string => n.title || (n.body ?? "").split("\n").find((l: string) => l.trim())?.trim().slice(0, 60) || "";
 
-function distance(a: string, b: string) {
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    prev = cur;
-  }
-  return prev[b.length];
-}
-
-/** Lower is better; undefined = no match. Exact id/title, then substring, then typo distance (≤ 1/3 of the length). */
-function score(note: any, query: string): number | undefined {
-  if (note.id === query) return 0;
-  const t = norm(noteTitle(note)), q = norm(query);
-  if (!t || !q) return undefined;
-  if (t === q) return 0;
-  if (t.includes(q)) return 1;
-  // Whole title or one of its words, within a typo per 3 chars: "vibe hack" ≈ "vide hack", "vibe" ≈ "vide".
-  const d = Math.min(...[t, ...t.split(" ")].map((c) => { const d = distance(c, q); return d <= Math.max(c.length, q.length) / 3 ? d : Infinity; }));
-  return d === Infinity ? undefined : 1 + d;
-}
-
-export function findNote(notes: any[], query: string, exact = false) {
-  const ranked = notes.map((n) => ({ n, s: score(n, query) })).filter((x) => x.s === 0 || (!exact && x.s !== undefined)).sort((a, b) => a.s! - b.s!);
-  const list = (xs: any[]) => xs.map((n) => `  ${n.id}  ${noteTitle(n)}`).join("\n");
-  if (!ranked.length) return fail(`No note matches "${query}". Notes:\n${list(notes)}`);
-  const best = ranked.filter((x) => x.s === ranked[0].s);
-  if (best.length > 1) return fail(`${best.length} notes match "${query}": use the id\n${list(best.map((x) => x.n))}`);
-  return ranked[0].n;
-}
+export const findNote = (notes: any[], query: string, exact = false) => findByTitle(notes, query, noteTitle, exact);
 
 const textArg = async (rest: string[]) => (rest.length === 1 && rest[0] === "-" ? await readStdin() : rest.join(" "));
 
@@ -76,7 +46,7 @@ export async function notesCommand(api: ApiClient, positionals: string[], args: 
 
   if (!verb || !["get", "append", "edit", "new", "rm"].includes(verb)) {
     const query = positionals.slice(verb === "list" ? 2 : 1).join(" ");
-    const shown = query ? notes.filter((n: any) => score(n, query) !== undefined) : notes;
+    const shown = query ? notes.filter((n: any) => matchScore(n.id, noteTitle(n), query) !== undefined) : notes;
     if (args.json) { console.log(JSON.stringify(shown, null, 2)); return; }
     for (const n of shown) console.log(`${n.id}  ${noteTitle(n)}${n.group ? `  ${DIM}in ${n.group}${RESET}` : ""}`);
     return;
