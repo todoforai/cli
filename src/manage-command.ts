@@ -47,6 +47,8 @@ Fields (PUT /todos/{id}):
   start            YYYY-MM-DD planned start; "" clears
   parent           parent todo id (same project; not itself or one of its subtodos); "" detaches (alias: parentTodoId)
   assignee         one project member, by email or user id (project members); "" unassigns (alias: assigneeId)
+  project          move it (with its messages) to another project, by id or exact name (project list);
+                   resets its group/section/state/assignee; refused while it runs; use it alone
 
   tfa-cli todo message <todo-id|-> <message-id> <field=value>…
                    Edit a SCHEDULED (not yet run) message: content, schedule (unix ms;
@@ -66,6 +68,7 @@ Examples:
   tfa-cli todo set 3f2a91 section="To pay"        (one of its group's sections; section="" takes it out)
   tfa-cli todo set - deadline=2026-11-20 start="2026-11-10 09:00"
   tfa-cli todo set 3f2a91 parent=52614dd2 assignee=gabor@example.com
+  tfa-cli todo set 3f2a91 project="Client X"     (move to another project)
   tfa-cli todo comment - "Asked by Gábor; waits for the Q3 numbers"
   tfa-cli todo message - 8c1d… schedule=1760000000000
   tfa-cli status <todo-id> DONE                  (status has its own command)
@@ -275,6 +278,10 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   if (sub !== "set") { printTodoHelp(); process.exit(sub ? 2 : 0); }
   if (!todoId || !rest.length) fail("Usage: tfa-cli todo set <todo-id|-> <field=value>…");
   const updates = parseAssignments(rest, TODO_ALIASES);
+  // The move resets group/section/state/assignee, so it cannot be combined with other fields.
+  if ("project" in updates && Object.keys(updates).length > 1) fail("project= moves the todo and resets its group, section, state and assignee: run it on its own, then set the rest");
+  const target = "project" in updates ? await projectIdByRef(api, String(updates.project)) : undefined;
+  delete updates.project;
   if ("star" in updates) {
     if (typeof updates.star !== "boolean") fail("star must be true or false");
     updates.starredAt = updates.star ? Date.now() : 0;
@@ -293,10 +300,23 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   // The move first: it is what is refused (a run going on, the workflow off), and then nothing else changed.
   if (flow !== undefined) await api.workflowMove(todoId, at?.w.id, at?.node?.id);
   if (Object.keys(updates).length) await api.updateTodo(todoId, updates);
+  if (target) await api.moveTodoToProject(todoId, target);
   if (now) await startNow(api, todoId);
   const where = flow === undefined ? undefined : at ? `workflow "${at.w.name}"${at.node ? ` at ${at.node.title}` : ""}` : "out of its workflow";
-  if (args.json) { console.log(JSON.stringify({ todoId, ...updates, ...(now && { started: true }), ...(at && { workflowId: at.w.id, ...(at.node && { workflowNode: at.node.id }) }), ...(flow === "" && { workflowId: null }) })); return; }
-  process.stderr.write(`${GREEN}✅ ${todoId} updated: ${[...Object.keys(updates), ...(now ? ["started"] : []), ...(where ? [where] : [])].join(", ")}${RESET}\n`);
+  if (args.json) { console.log(JSON.stringify({ todoId, ...updates, ...(target && { projectId: target }), ...(now && { started: true }), ...(at && { workflowId: at.w.id, ...(at.node && { workflowNode: at.node.id }) }), ...(flow === "" && { workflowId: null }) })); return; }
+  process.stderr.write(`${GREEN}✅ ${todoId} updated: ${[...Object.keys(updates), ...(target ? ["project"] : []), ...(now ? ["started"] : []), ...(where ? [where] : [])].join(", ")}${RESET}\n`);
+}
+
+/** A project id, or an exact (case-insensitive) project name → its id. */
+async function projectIdByRef(api: ApiClient, ref: string): Promise<string> {
+  if (!ref) fail("project needs a project id or name (tfa-cli project list)");
+  const projects = ((await api.listProjects()) as any[]).map((p) => p.project ?? p);
+  const hit = projects.find((p) => p.id === ref) ?? projects.filter((p) => p.name?.toLowerCase() === ref.toLowerCase());
+  if (Array.isArray(hit)) {
+    if (hit.length !== 1) fail(hit.length ? `Several projects are named "${ref}": use the id (tfa-cli project list)` : `No project "${ref}" (tfa-cli project list)`);
+    return hit[0].id;
+  }
+  return hit.id;
 }
 
 export async function projectCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId?: string) {

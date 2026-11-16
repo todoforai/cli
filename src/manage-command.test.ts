@@ -46,3 +46,19 @@ test('voice defaults to mine, allows project and rejects the removed global scop
     expect(exit).toHaveBeenCalledWith(2);
   } finally { exit.mockRestore(); }
 });
+
+test('todo set project= moves the todo, resolving a project name to its id', async () => {
+  const { todoCommand } = await import('./manage-command');
+  const moveTodoToProject = mock(async () => null);
+  const updateTodo = mock(async () => null);
+  const api = { listProjects: async () => [{ project: { id: 'p-client', name: 'Client X' } }], moveTodoToProject, updateTodo };
+  await todoCommand(api as any, ['todo', 'set', 't1', 'project=client x'], { json: true });
+  expect(moveTodoToProject).toHaveBeenCalledWith('t1', 'p-client');
+  expect(updateTodo).not.toHaveBeenCalled();
+  const exit = process.exit;
+  process.exit = ((code: number) => { throw new Error(`exit ${code}`); }) as any;
+  try {
+    await expect(todoCommand(api as any, ['todo', 'set', 't1', 'project=p-client', 'group=x'], {})).rejects.toThrow('exit 2');
+  } finally { process.exit = exit; }
+  expect(moveTodoToProject).toHaveBeenCalledTimes(1);
+});
