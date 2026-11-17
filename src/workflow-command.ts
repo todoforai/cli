@@ -76,20 +76,21 @@ export const findStep = (w: any, q: string) => findExact(w.nodes as any[], q, (n
 /** "<workflow>" or "<workflow>:<step>", each its id or exact name. A name may hold ":" itself:
  *  the whole as a name first, then the one split where both sides name something exactly. */
 export function findWorkflowStep(all: any[], spec: string): { w: any; node?: any } {
-  const named = (q: string) => all.filter((x) => x.id === q.trim() || x.name.trim().toLowerCase() === q.trim().toLowerCase());
-  if (named(spec).length) return { w: findExact(all, spec, (x) => x.name, "workflow") };
+  const named = <T extends { id: string }>(xs: T[], q: string, titleOf: (x: T) => string) => xs.filter((x) => x.id === q.trim() || titleOf(x).trim().toLowerCase() === q.trim().toLowerCase());
+  const workflows = (q: string) => named(all, q, (x) => x.name);
+  if (workflows(spec).length) return { w: findExact(all, spec, (x) => x.name, "workflow") };
   const readings: { w: any; node: any }[] = [];
   for (let i = spec.indexOf(":"); i > 0; i = spec.indexOf(":", i + 1)) {
-    const [w, more] = named(spec.slice(0, i));
-    const step = spec.slice(i + 1).trim().toLowerCase();
-    const node = w && !more && step ? w.nodes.find((n: any) => n.id === spec.slice(i + 1).trim() || n.title.trim().toLowerCase() === step) : undefined;
-    if (node) readings.push({ w, node });
+    const [w, more] = workflows(spec.slice(0, i));
+    const step = spec.slice(i + 1);
+    // A step both sides name: findStep, so two steps of that title fail listing their ids.
+    if (w && !more && step.trim() && named(w.nodes as any[], step, (n) => n.title).length) readings.push({ w, node: findStep(w, step.trim()) });
   }
   if (readings.length > 1) fail(`"${spec}" reads more ways: ${readings.map((r) => `"${r.w.name}" at "${r.node.title}"`).join(", ")}. Use the ids: <workflow-id>:<step-id>`);
   if (readings.length) return readings[0];
   // Nothing exact: the workflow part names one, its step does not (it fails listing its steps), else the whole fails.
   const i = spec.lastIndexOf(":");
-  const [w, more] = i > 0 ? named(spec.slice(0, i)) : [];
+  const [w, more] = i > 0 ? workflows(spec.slice(0, i)) : [];
   if (w && !more) return { w, node: findStep(w, spec.slice(i + 1).trim()) };
   return { w: findExact(all, spec, (x) => x.name, "workflow") };
 }

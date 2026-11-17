@@ -6,6 +6,7 @@ import { getEnv } from "./args";
 import { getDisplayName, getItemId } from "./select";
 import { findWorkflowStep, positionText } from "./workflow-command";
 import { DIM, GREEN, RED, RESET } from "./colors";
+import { findExact } from "./title-match";
 import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice-collect";
 import { readFileSync } from "fs";
 import { randomUUID } from "node:crypto";
@@ -447,8 +448,7 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       if (!which || !!flow === !!group || Object.keys(other).length) fail(usage);
       const found = (await api.listMySources()).filter((s: any) => s.id === which || s.platform === which);
       if (found.length !== 1) fail(found.length ? `${found.length} linked accounts match "${which}": use the id (tfa-cli project sources all)` : `No linked account "${which}". Link one in the app (/slack, /discord, /x, /instagram, /reddit)`);
-      const into = flow ? flows.filter((f) => f.id === flow || f.name === flow) : [];
-      if (flow && into.length !== 1) fail(into.length ? `${into.length} workflows are named "${flow}": use the id` : `No workflow "${flow}". tfa-cli workflow lists them`);
+      const into = flow ? [findExact(flows, flow, (f: any) => f.name, "workflow")] : [];
       await api.setSourceTarget(projectId, found[0], flow ? { flow: into[0].id } : { group });
       process.stderr.write(`${GREEN}✅ ${found[0].platform} ${found[0].name} → ${flow ? `workflow "${into[0].name}"` : `group ${group}`}${RESET}\n`);
       return;

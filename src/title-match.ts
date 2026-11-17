@@ -40,11 +40,12 @@ export function findByTitle<T extends { id: string }>(items: T[], query: string,
   return ranked[0].n;
 }
 
-/** The one item `query` names exactly: its id, or its title as written (case aside). Nothing is
+/** The one item `query` names exactly: its id first, else its title as written (case aside). Nothing is
  *  guessed: none fails with what it may have meant, more than one fails listing their ids. */
 export function findExact<T extends { id: string }>(items: T[], query: string, titleOf: (x: T) => string, what: string): T {
   const q = query.trim().toLowerCase();
-  const hits = items.filter((x) => x.id === query.trim() || titleOf(x).trim().toLowerCase() === q);
+  const byId = items.filter((x) => x.id === query.trim());
+  const hits = byId.length ? byId : items.filter((x) => titleOf(x).trim().toLowerCase() === q);
   const list = (xs: T[]) => xs.map((x) => `  ${x.id}  ${titleOf(x)}`).join("\n");
   if (hits.length === 1) return hits[0];
   if (hits.length > 1) return fail(`${hits.length} ${what}s are named "${query}": use the id\n${list(hits)}`);

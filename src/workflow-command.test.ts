@@ -95,6 +95,14 @@ test('two workflows of the exact name fail, never a split into a third', () => {
   try { expect(() => findWorkflowStep([a, b, c], 'Billing: Review')).toThrow('exit 2'); } finally { process.exit = exit; }
 });
 
+test('two steps of one title fail listing their ids; an id beats a title', () => {
+  const twin = { id: 'w9', name: 'Twin', nodes: [{ id: 'a', kind: 'trigger', title: 'Approve' }, { id: 'b', kind: 'trigger', title: 'Approve' }, { id: 'c', kind: 'trigger', title: 'a' }], links: [] };
+  const exit = process.exit;
+  (process as any).exit = (code: number) => { throw new Error(`exit ${code}`); };
+  try { expect(() => findWorkflowStep([twin], 'Twin:Approve')).toThrow('exit 2'); } finally { process.exit = exit; }
+  expect(findWorkflowStep([twin], 'Twin:a').node.id).toBe('a');
+});
+
 test('nothing is guessed: a typo or a part of a name fails, saying what it may have meant', () => {
   const exit = process.exit, write = process.stderr.write;
   let said = '';
