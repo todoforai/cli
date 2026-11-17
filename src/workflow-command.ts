@@ -81,8 +81,7 @@ function best<T extends { id: string }>(items: T[], q: string, titleOf: (x: T) =
 /** "<workflow>" or "<workflow>:<step>". A name may hold ":" itself: the exact name wins, then the one
  *  split where both sides name something; more than one such reading fails. */
 export function findWorkflowStep(all: any[], spec: string): { w: any; node?: any } {
-  const exact = all.filter((x) => matchScore(x.id, x.name, spec) === 0);
-  if (exact.length === 1) return { w: exact[0] };
+  if (all.some((x) => matchScore(x.id, x.name, spec) === 0)) return { w: findByTitle(all, spec, (x) => x.name, true, "workflow") };
   const readings: { w: any; node: any }[] = [];
   for (let i = spec.indexOf(":"); i > 0; i = spec.indexOf(":", i + 1)) {
     const w = best(all, spec.slice(0, i).trim(), (x) => x.name);

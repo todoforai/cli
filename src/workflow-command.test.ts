@@ -83,3 +83,11 @@ test('list --workflow --node filters on the backend, everyone\'s runs', async ()
   await listTodosCommand(a as any, 'p', ['--workflow', 'számla', '--node', 'gábor', '--json'], async () => 'me');
   expect(listTodos).toHaveBeenLastCalledWith('p', expect.objectContaining({ workflowId: 'w1', workflowNode: 'ok', contributorIds: undefined }));
 });
+
+test('two workflows of the exact name fail, never a split into a third', () => {
+  const a = { ...wf, id: 'a', name: 'Billing: Review' }, b = { ...wf, id: 'b', name: 'Billing: Review' };
+  const c = { ...wf, id: 'c', name: 'Billing', nodes: [{ id: 'r', kind: 'run', title: 'Review', script: { kind: 'ai', prompt: 'x' } }] };
+  const exit = process.exit;
+  (process as any).exit = (code: number) => { throw new Error(`exit ${code}`); };
+  try { expect(() => findWorkflowStep([a, b, c], 'Billing: Review')).toThrow('exit 2'); } finally { process.exit = exit; }
+});
