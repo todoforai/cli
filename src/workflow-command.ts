@@ -72,12 +72,29 @@ export function workflowText(w: any, names: (id: string) => string | undefined =
 /** A step of `w` by id or loose title. */
 export const findStep = (w: any, q: string) => findByTitle(w.nodes as any[], q, (n) => n.title, false, `step of "${w.name}"`);
 
-/** "<workflow>" or "<workflow>:<step>" (a name may hold ":" itself: split only where both sides name something). */
+/** The one best match of `q` (as findByTitle ranks), none when nothing or several tie. */
+function best<T extends { id: string }>(items: T[], q: string, titleOf: (x: T) => string): T | undefined {
+  const ranked = items.map((x) => ({ x, s: matchScore(x.id, titleOf(x), q) })).filter((r) => r.s !== undefined).sort((a, b) => a.s! - b.s!);
+  return ranked.length && (ranked.length === 1 || ranked[1].s! > ranked[0].s!) ? ranked[0].x : undefined;
+}
+
+/** "<workflow>" or "<workflow>:<step>". A name may hold ":" itself: the exact name wins, then the one
+ *  split where both sides name something; more than one such reading fails. */
 export function findWorkflowStep(all: any[], spec: string): { w: any; node?: any } {
-  for (let i = spec.lastIndexOf(":"); i > 0; i = spec.lastIndexOf(":", i - 1)) {
-    const name = spec.slice(0, i).trim(), step = spec.slice(i + 1).trim();
-    const w = all.filter((x) => matchScore(x.id, x.name, name) !== undefined);
-    if (w.length === 1 && step && w[0].nodes.some((n: any) => matchScore(n.id, n.title, step) !== undefined)) return { w: w[0], node: findStep(w[0], step) };
+  const exact = all.filter((x) => matchScore(x.id, x.name, spec) === 0);
+  if (exact.length === 1) return { w: exact[0] };
+  const readings: { w: any; node: any }[] = [];
+  for (let i = spec.indexOf(":"); i > 0; i = spec.indexOf(":", i + 1)) {
+    const w = best(all, spec.slice(0, i).trim(), (x) => x.name);
+    const step = spec.slice(i + 1).trim();
+    const node = w && step ? best(w.nodes, step, (n: any) => n.title) : undefined;
+    if (node) readings.push({ w, node });
+  }
+  if (readings.length > 1) fail(`"${spec}" reads more ways: ${readings.map((r) => `"${r.w.name}" at "${r.node.title}"`).join(", ")}. Use the ids: <workflow-id>:<step-id>`);
+  if (readings.length) return readings[0];
+  if (spec.includes(":") && !best(all, spec, (x) => x.name)) {
+    const w = best(all, spec.slice(0, spec.lastIndexOf(":")).trim(), (x) => x.name);
+    if (w) return { w, node: findStep(w, spec.slice(spec.lastIndexOf(":") + 1).trim()) }; // fails listing its steps
   }
   return { w: findByTitle(all, spec, (x) => x.name, false, "workflow") };
 }

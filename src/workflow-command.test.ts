@@ -42,6 +42,11 @@ test('"<workflow>:<step>" names a step by id or title; a name holding ":" stays 
   expect(findWorkflowStep([wf, other], 'Számlakezelés: gábor ellenőrzi').node.id).toBe('ok');
   expect(findWorkflowStep([wf, other], 'Ügyfél: onboarding')).toEqual({ w: other });
   expect(findWorkflowStep([wf, other], 'Ügyfél: onboarding:köszöntés').node.id).toBe('hi');
+  // The exact name wins over a substring competitor and over a step its suffix names.
+  const archive = { ...wf, id: 'w3', name: 'Számlakezelés archívum' };
+  expect(findWorkflowStep([wf, archive], 'Számlakezelés:read')).toEqual({ w: wf, node: wf.nodes[1] });
+  const clash = { ...other, nodes: [{ id: 'on', kind: 'run', title: 'onboarding', script: { kind: 'ai', prompt: 'x' } }] };
+  expect(findWorkflowStep([clash], 'Ügyfél: onboarding')).toEqual({ w: clash });
 });
 
 test('todo workflow: each step with what it gave on, here what came in', () => {
