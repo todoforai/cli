@@ -54,13 +54,70 @@ jobs:
           bun build src/index.ts --compile --minify --target="bun-$t" --outfile "$out"
         done
         ./release/todoforai-cli-linux-x64 --version | grep -qx "${TAG#v}"
-        (cd release && sha256sum * > SHA256SUMS)
         ls -la release
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: cli-binaries
+        path: release/
+        retention-days: 3
+
+  # Windows exe: Azure Trusted Signing, same profile as the bridge (TODO for AI Kft.).
+  # Unsigned, SmartScreen/Defender treat a fresh 100 MB exe as unknown and warn.
+  sign-windows:
+    needs: binaries
+    runs-on: windows-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: cli-binaries
+        path: release
+
+    - name: Sign with Azure Trusted Signing
+      shell: pwsh
+      env:
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      run: |
+        cargo install trusted-signing-cli --version 0.11.0 --locked
+        $exe = "release/todoforai-cli-windows-x64.exe"
+        trusted-signing-cli -e "${{ secrets.AZURE_SIGNING_ENDPOINT }}" -a "${{ secrets.AZURE_SIGNING_ACCOUNT }}" -c "${{ secrets.AZURE_SIGNING_PROFILE }}" -d TODOforAI $exe
+        if ($LASTEXITCODE -ne 0) { Write-Error "signing failed"; exit 1 }
+        $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+          Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+        & $signtool verify /pa $exe
+        if ($LASTEXITCODE -ne 0) { Write-Error "exe is not signed"; exit 1 }
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: cli-windows-signed
+        path: release/todoforai-cli-windows-x64.exe
+        retention-days: 3
+
+  publish:
+    needs: sign-windows
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: cli-binaries
+        path: release
+
+    # Signing changed the exe's bytes: take the signed one, then checksum.
+    - uses: actions/download-artifact@v4
+      with:
+        name: cli-windows-signed
+        path: release
+
+    - name: Checksums
+      run: cd release && rm -f SHA256SUMS && chmod +x todoforai-cli-* && sha256sum * > SHA256SUMS && ls -la
 
     - name: Publish release
       env:
         GH_TOKEN: ${{ github.token }}
         TAG: ${{ inputs.tag }}
+        GH_REPO: ${{ github.repository }}
       run: |
         if gh release view "$TAG" >/dev/null 2>&1; then
           gh release upload "$TAG" release/* --clobber
