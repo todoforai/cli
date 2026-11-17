@@ -79,6 +79,17 @@ tfa-cli notify --to anna@x.com "Review?" "PR is ready" --href /t/<todo-id>   # n
 
 `notify` goes to your own user by default. `--to <email>` reaches one member of the current project (`--project <id>`, `$TODOFORAI_PROJECT_ID` or the default project); non-members are refused (404). It is shown as from you (or your agent). There is no broadcast / "all members" flag, so loop over `project members` to reach the whole team. `--subject` sets the dedupe key (the same text is delivered once), `--href` must be an in-app path. Caps: 10 new notes/day to yourself, 20/day to teammates.
 
+### Cloud machine size
+
+```bash
+tfa-cli machine size                        # current size, what the plan includes, price
+tfa-cli machine size --disk 20              # resize (asks; --yes skips); memory --memory, cores --cpus
+tfa-cli machine size --plan                 # back to the plan's size, stops the charge
+tfa-cli machine size --for dev@acme.com --memory 8   # a member's, on a workspace you own/admin (its credit pays)
+```
+
+Above the plan: $4/GB RAM, $4/vCPU, $1/10 GB disk a month (max 16 GB · 4 vCPU · 50 GB), charged daily from credit. A resize restarts the machine; `/root` and `/home` are kept. From an agent shell (`dst_` token) nothing is applied: it posts an approval card, and the user's click applies it.
+
 ### Show files and HTML in the chat
 
 ```bash

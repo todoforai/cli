@@ -37,6 +37,7 @@ Examples:
   tfa-cli workflow [query] | get|set|on|off|rm|start …  # Workflows: trigger + run nodes, lines (tfa-cli workflow --help)
   tfa-cli brand [show|create|rename|voice …]    # The project's brand page + voice learning
   tfa-cli device list|rename|wallpaper …        # Paired machines
+  tfa-cli machine size [--disk 20] [--memory 4] [--cpus 2] [--yes]  # Cloud machine size + price (resize asks, restarts it)
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated)
   tfa-cli status <todo-id> <STATUS>     # Update a todo's status
   tfa-cli update                        # Update tfa-cli itself (also auto-updates in background; NO_UPDATE_NOTIFIER=1 disables)
@@ -167,7 +168,7 @@ const WORD_FLAGS: Record<string, string> = {
   config: "show-config",
 };
 // Subcommands that print their own help; anywhere else a second positional is data.
-const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "widgets", "workflow"];
+const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "machine", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "widgets", "workflow"];
 
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
@@ -198,6 +199,12 @@ export function parseCliArgs() {
       force: { type: "boolean", default: false },
       direction: { type: "string" },
       reason: { type: "string" },
+      memory: { type: "string" },
+      cpus: { type: "string" },
+      disk: { type: "string" },
+      plan: { type: "boolean" },
+      for: { type: "string" },
+      yes: { type: "boolean", short: "y" },
       url: { type: "string" },
       account: { type: "string" },
       "from-company": { type: "boolean", default: false },
