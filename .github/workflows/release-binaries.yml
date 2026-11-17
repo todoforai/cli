@@ -47,15 +47,15 @@ jobs:
         # The tag's package.json carries a stale version (publish-npm rewrites it
         # without committing); src/args.ts inlines it, so pin it from the tag.
         node -e "const p=require('./package.json'); p.version=process.env.TAG.replace(/^v/,''); require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)+'\n')"
-        mkdir -p bin
+        mkdir -p release
         for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
-          out="bin/todoforai-cli-${t/darwin/macos}"
+          out="release/todoforai-cli-${t/darwin/macos}"
           [ "$t" = windows-x64 ] && out="$out.exe"
           bun build src/index.ts --compile --minify --target="bun-$t" --outfile "$out"
         done
-        ./bin/todoforai-cli-linux-x64 --version | grep -qx "${TAG#v}"
-        (cd bin && sha256sum * > SHA256SUMS)
-        ls -la bin
+        ./release/todoforai-cli-linux-x64 --version | grep -qx "${TAG#v}"
+        (cd release && sha256sum * > SHA256SUMS)
+        ls -la release
 
     - name: Publish release
       env:
@@ -63,7 +63,7 @@ jobs:
         TAG: ${{ inputs.tag }}
       run: |
         if gh release view "$TAG" >/dev/null 2>&1; then
-          gh release upload "$TAG" bin/* --clobber
+          gh release upload "$TAG" release/* --clobber
         else
-          gh release create "$TAG" bin/* --title "todoforai-cli $TAG" --notes "npm: @todoforai/cli@${TAG#v}" --latest
+          gh release create "$TAG" release/* --title "todoforai-cli $TAG" --notes "npm: @todoforai/cli@${TAG#v}" --latest
         fi
