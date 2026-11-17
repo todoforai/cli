@@ -391,7 +391,7 @@ async function main() {
   if (positionals[0] === "notify") { await notifyCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "widgets") { await widgetsCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "notes") { await notesCommand(api, positionals, args, scopedProject); return; }
-  if (positionals[0] === "workflow") { await workflowCommand(api, positionals, args, scopedProject, async (id) => (await rid(id === "-" ? getEnv("TODO_ID") : id))!); return; }
+  if (positionals[0] === "workflow") { await workflowCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "memory") { await memoryCommand(apiUrl, apiKey, positionals, scopedProject); return; }
   if (positionals[0] === "import") { await importCommand(api, positionals, args, scopedProject, cfgScope.data.default_agent_settings?.id); return; }
   if (positionals[0] === "delete") {

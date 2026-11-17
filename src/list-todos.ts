@@ -11,6 +11,8 @@
 import { parseArgs } from "util";
 import { TodoStatus, CLOSED_STATUSES, unseenStatus } from "@shared/fbe";
 import { CYAN, DIM, GREEN, YELLOW, RED, RESET } from "./colors";
+import { findByTitle } from "./title-match";
+import { findStep } from "./workflow-command";
 
 const STATUS_COLOR: Record<string, string> = {
   DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
@@ -41,6 +43,7 @@ Filters (all combinable):
       --contributor <u>  id or email, comma = any; "all" = no filter (default: you)
       --since/--until <t> window on the sort field: epoch ms | YYYY-MM-DD | ISO | 12h / 3d (ago)
       --sort created     by createdAt instead of activity
+      --workflow <w>     the runs of a workflow (id or name), everyone's; --node <step> = the ones at that step
       --project <id>     other project (default: the current one)
 
 Paging: -n <limit> (default 30). "Next cursor: N" on stderr / nextCursor in JSON → re-run with --cursor N.
@@ -125,6 +128,12 @@ function matchesRequestedStatus(t: any, requested: string[] | null, wanted: Set<
   return (wantOpen && isOpen(s)) || (wanted?.has(s) ?? false);
 }
 
+/** --workflow/--node by id or loose name → the ids the backend filters on. */
+async function runFilter(api: any, projectId: string, workflow: string, node?: string) {
+  const w = findByTitle(await api.listWorkflows(projectId), workflow, (x: any) => x.name, false, "workflow");
+  return { workflowId: w.id, ...(node && { workflowNode: findStep(w, node).id }) };
+}
+
 export async function listTodosCommand(
   api: any, defaultProjectId: string | undefined, argv: string[],
   /** Caller's user id; drives the default "mine" filter. Unresolvable → everyone's. */
@@ -141,6 +150,8 @@ export async function listTodosCommand(
       until:      { type: "string" },
       sort:       { type: "string" },
       contributor: { type: "string" },
+      workflow:   { type: "string" },
+      node:       { type: "string" },
       status:     { type: "string",  short: "s" },
       state:      { type: "string" },
       all:        { type: "boolean", short: "A", default: false },
@@ -169,13 +180,16 @@ export async function listTodosCommand(
   let cursor = cursorValue(values.cursor);
   if (until !== undefined) cursor = cursor === undefined ? until : Math.min(cursor, until);
   const search = values.search ? String(values.search) : undefined;
+  if (values.node && !values.workflow) { process.stderr.write(`${RED}Error: --node needs --workflow${RESET}\n`); process.exit(2); }
+  const run = values.workflow ? await runFilter(api, projectId, String(values.workflow), values.node as string | undefined) : undefined;
   const contributorArg = values.contributor === undefined ? undefined : String(values.contributor);
   const everyone = contributorArg?.trim().toLowerCase() === "all";
   let contributorIds = contributorArg && !everyone
     ? await resolveContributors(api, projectId, contributorArg)
     : undefined;
   let mineOnly = false;
-  if (!contributorIds && !everyone && resolveUserId) {
+  // A workflow's runs are everyone's: most were started by a trigger, not opened by anyone.
+  if (!contributorIds && !everyone && !values.workflow && resolveUserId) {
     const me = await resolveUserId();
     if (me) { contributorIds = [me]; mineOnly = true; }
   }
@@ -209,7 +223,7 @@ export async function listTodosCommand(
   while (rows.length < limit) {
     const requestLimit = Math.min(pageSize, limit - rows.length);
     const page = toItemsPage(await api.listTodos(projectId, {
-      limit: requestLimit, cursor, search, since, contributorIds,
+      limit: requestLimit, cursor, search, since, contributorIds, ...run,
       // Server-side open-only filter; the loop below re-checks for older backends.
       ...(!includeClosed && { excludeClosed: true }),
       ...(sort !== "activity" && { sort }),

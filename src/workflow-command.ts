@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import type { ApiClient } from "@shared/api";
 import { DIM, GREEN, RESET } from "./colors";
 import { readStdin } from "./input";
-import { fail, findByTitle } from "./title-match";
+import { fail, findByTitle, matchScore } from "./title-match";
 
 export function printWorkflowHelp() {
   process.stderr.write(`
@@ -21,9 +21,14 @@ Usage:
   tfa-cli workflow set <file|->                Create (no "id") or replace one from that JSON
   tfa-cli workflow on|off <workflow>           Start / stop listening (on needs a starter, every node reachable)
   tfa-cli workflow rm <workflow>               Delete it (its todos stay where they are, out of any run)
-  tfa-cli workflow start <todo-id|-> <workflow> [node]
-                                               Start a todo as a run, at a starter (default: its composer trigger)
-  tfa-cli todo workflow <todo-id|->            Where a todo stands in its run, the ways on from there
+
+A run is the todo itself, so runs are handled as todos:
+  tfa-cli list --workflow <workflow> [--node <step>]   Its runs (at that step)
+  tfa-cli todo set <todo-id|-> workflow="<workflow>"   Start it at the composer starter
+  tfa-cli todo set <todo-id|-> workflow="<workflow>:<step>"
+                                               Put it at any step: a box runs again (a retry), a person is asked again
+  tfa-cli todo set <todo-id|-> workflow=""     Take it out of its workflow (the todo stays)
+  tfa-cli todo workflow <todo-id|->            Its path: each step with what came in and what it gave on
   tfa-cli todo next <todo-id|-> ["outcome"]    Finish its node: plain done, or along the line "outcome"
 
 JSON shape (what get --json prints):
@@ -64,11 +69,46 @@ export function workflowText(w: any, names: (id: string) => string | undefined =
   return out.join("\n");
 }
 
+/** A step of `w` by id or loose title. */
+export const findStep = (w: any, q: string) => findByTitle(w.nodes as any[], q, (n) => n.title, false, `step of "${w.name}"`);
+
+/** "<workflow>" or "<workflow>:<step>" (a name may hold ":" itself: split only where both sides name something). */
+export function findWorkflowStep(all: any[], spec: string): { w: any; node?: any } {
+  for (let i = spec.lastIndexOf(":"); i > 0; i = spec.lastIndexOf(":", i - 1)) {
+    const name = spec.slice(0, i).trim(), step = spec.slice(i + 1).trim();
+    const w = all.filter((x) => matchScore(x.id, x.name, name) !== undefined);
+    if (w.length === 1 && step && w[0].nodes.some((n: any) => matchScore(n.id, n.title, step) !== undefined)) return { w: w[0], node: findStep(w[0], step) };
+  }
+  return { w: findByTitle(all, spec, (x) => x.name, false, "workflow") };
+}
+
+/** What went along a line: its text's first line and its files ("nothing": an empty output). */
+const io = (o: any) => {
+  const text = String(o.text ?? "").trim(), first = text.split("\n")[0].slice(0, 100);
+  const files = (o.files ?? []).map((f: any) => f.originalName ?? f.id);
+  return [text && `"${first}${first.length < text.length ? "…" : ""}"`, files.length && `files: ${files.join(", ")}`].filter(Boolean).join(", ") || "nothing";
+};
+
+/** A run (`todo workflow`): its path, each step with what came in and what it gave on, and the ways on. */
+export function positionText(pos: any, wfName: (id: string) => string = (id) => id): string {
+  const out = [`${pos.workflowName}${pos.node ? "" : `  ${DIM}(ended)${RESET}`}`];
+  for (const s of pos.steps) {
+    if (s.state === "next") { out.push(`    ${DIM}${s.title}  (ahead)${RESET}`); continue; }
+    const when = s.at ? `${new Date(s.at).toISOString().slice(0, 16).replace("T", " ")}  ` : "";
+    out.push(`  ${s.state === "here" ? "▶" : "✓"} ${s.title}${s.outcome ? `  (${s.outcome})` : ""}  ${DIM}${when}${s.node}${RESET}`);
+    if (s.state === "here") out.push(`      in:  ${s.input ? io(s.input) : "nothing"}`);
+    else if (s.out) out.push(`      out: ${io(s.out)}`);
+  }
+  for (const m of pos.moves) out.push(`  ${m.label ? `[${m.label}]` : m.when ? `"${m.when}"` : "done"} → ${m.toTitle ?? "end"}${m.toWorkflow ? `, on in the workflow "${wfName(m.toWorkflow)}"` : ""}${m.to ? ` ${DIM}(${m.to})${RESET}` : ""}`);
+  if (pos.pending !== undefined) out.push(`${DIM}picked: ${pos.pending || "done"} (goes when the agent run ends)${RESET}`);
+  return out.join("\n");
+}
+
 const starts = (w: any) => w.nodes.filter((n: any) => n.kind === "trigger" && !w.links.some((l: any) => l.to === n.id)).map((n: any) => on(n.on)).join(", ");
 
-export async function workflowCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId: string | undefined, resolveTodo: (id: string) => Promise<string>) {
+export async function workflowCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId: string | undefined) {
   if (!projectId) fail("No project — pass --project <id> or set TODOFORAI_PROJECT_ID");
-  const [, verb, target, ...rest] = positionals;
+  const [, verb, target] = positionals;
   const all: any[] = await api.listWorkflows(projectId!);
   const find = (q: string | undefined, exact = false) => (q ? findByTitle(all, q, (w) => w.name, exact, "workflow") : fail(`Usage: tfa-cli workflow ${verb} <workflow>`));
   const names = (id: string) => all.find((w) => w.id === id)?.name;
@@ -104,14 +144,7 @@ export async function workflowCommand(api: ApiClient, positionals: string[], arg
     process.stderr.write(`${GREEN}✅ workflow "${w.name}" deleted${RESET}\n`);
     return;
   }
-  if (verb === "start") {
-    const [which, node] = rest;
-    if (!target || !which) fail("Usage: tfa-cli workflow start <todo-id|-> <workflow> [node]");
-    const w = find(which);
-    await api.workflowStart(await resolveTodo(target), w.id, node);
-    process.stderr.write(`${GREEN}✅ started in "${w.name}"${node ? ` at ${node}` : ""}${RESET}\n`);
-    return;
-  }
+  if (verb === "start") fail('A run is the todo: tfa-cli todo set <todo-id|-> workflow="<workflow>[:<step>]"');
   const query = positionals.slice(verb === "list" ? 2 : 1).join(" ");
   const shown = query ? [findByTitle(all, query, (w) => w.name, false, "workflow")] : all;
   if (args.json) { json(shown); return; }

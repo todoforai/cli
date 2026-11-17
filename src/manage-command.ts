@@ -4,6 +4,7 @@ import type { ApiClient, VoiceScope } from "@shared/api";
 import { parseAssignments, resolveAgent } from "./agent-command";
 import { getEnv } from "./args";
 import { getDisplayName, getItemId } from "./select";
+import { findWorkflowStep, positionText } from "./workflow-command";
 import { DIM, GREEN, RED, RESET } from "./colors";
 import { ADAPTERS, DEVICE_CHANNELS, checkChannel, collectChannel } from "./voice-collect";
 import { readFileSync } from "fs";
@@ -23,7 +24,8 @@ Usage:
   tfa-cli todo html <todo-id|-> [file|-]        Its row HTML: no file = print it; a file / - (stdin)
                                                 = replace it; --rm = remove it (see below)
   tfa-cli todo restore <todo-id>                Bring a trashed todo back (undo of 'delete')
-  tfa-cli todo workflow <todo-id|->             Where it stands in its workflow run, the ways on from here
+  tfa-cli todo workflow <todo-id|->             Its workflow path: each step with what came in and what it
+                                                gave on, the ways on from here (--json: as is)
   tfa-cli todo next <todo-id|-> ["outcome"]     Finish its node: plain done, or along the line named
                                                 "outcome"; during its own agent run: when that ends
 
@@ -38,6 +40,8 @@ Fields (PUT /todos/{id}):
   kind             task|info — promote an ⓘ info row to a task (or back)
   section          one of its group's sections (project groups set <slug> sections=…); "" takes it out
   state            one of the project's own states (project states); also sets its base status; "" clears
+  workflow         "<workflow>" starts it at the composer starter; "<workflow>:<step>" puts it at any
+                   step (a box runs again, a person is asked again); "" takes it out of its workflow
   deadline         YYYY-MM-DD (whole day) or "YYYY-MM-DD HH:MM" (local time); "" clears (alias: end)
   start            YYYY-MM-DD planned start; "" clears
   parent           parent todo id (same project; not itself or one of its subtodos); "" detaches (alias: parentTodoId)
@@ -263,12 +267,8 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     const pos: any = await api.workflowPosition(todoId);
     if (args.json) { console.log(JSON.stringify(pos, null, 2)); return; }
     if (!pos) { process.stderr.write(`${DIM}Not in a workflow${RESET}\n`); return; }
-    const mark: Record<string, string> = { done: "✓ ", here: "▶ ", next: "" };
     const others: any[] = pos.moves.some((m: any) => m.toWorkflow) ? await api.listWorkflows((await api.getTodo(todoId)).projectId) : [];
-    const wfName = (id: string) => others.find((w) => w.id === id)?.name ?? id;
-    process.stderr.write(`${pos.workflowName}: ${pos.steps.map((s: any) => `${mark[s.state]}${s.title}`).join(" › ")}${pos.node ? "" : `  ${DIM}(ended)${RESET}`}\n`);
-    for (const m of pos.moves) process.stderr.write(`  ${m.label ? `[${m.label}]` : m.when ? `"${m.when}"` : "done"} → ${m.toTitle ?? "end"}${m.toWorkflow ? `, on in the workflow "${wfName(m.toWorkflow)}"` : ""}${m.to ? ` ${DIM}(${m.to})${RESET}` : ""}\n`);
-    if (pos.pending !== undefined) process.stderr.write(`${DIM}picked: ${pos.pending || "done"} (goes when the agent run ends)${RESET}\n`);
+    process.stderr.write(positionText(pos, (id) => others.find((w) => w.id === id)?.name ?? id) + "\n");
     return;
   }
   if (sub !== "set") { printTodoHelp(); process.exit(sub ? 2 : 0); }
@@ -285,10 +285,16 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   if (typeof updates.assigneeId === "string" && updates.assigneeId.includes("@")) updates.assigneeId = await memberIdByEmail(api, todoId, updates.assigneeId);
   const now = "scheduledTimestamp" in updates && (updates.scheduledTimestamp = parseSchedule(updates.scheduledTimestamp)) === "now";
   if (now) delete updates.scheduledTimestamp;
+  // The workflow is where the todo stands, not a field: putting it there runs what is there.
+  const flow = "workflow" in updates ? String(updates.workflow ?? "").trim() : undefined;
+  delete updates.workflow;
+  const at = flow ? findWorkflowStep(await api.listWorkflows((await api.getTodo(todoId)).projectId), flow) : undefined;
   if (Object.keys(updates).length) await api.updateTodo(todoId, updates);
+  if (flow !== undefined) await api.workflowMove(todoId, at?.w.id, at?.node?.id);
   if (now) await startNow(api, todoId);
-  if (args.json) { console.log(JSON.stringify({ todoId, ...updates, ...(now && { started: true }) })); return; }
-  process.stderr.write(`${GREEN}✅ ${todoId} updated: ${[...Object.keys(updates), ...(now ? ["started"] : [])].join(", ")}${RESET}\n`);
+  const where = flow === undefined ? undefined : at ? `workflow "${at.w.name}"${at.node ? ` at ${at.node.title}` : ""}` : "out of its workflow";
+  if (args.json) { console.log(JSON.stringify({ todoId, ...updates, ...(now && { started: true }), ...(at && { workflowId: at.w.id, ...(at.node && { workflowNode: at.node.id }) }), ...(flow === "" && { workflowId: null }) })); return; }
+  process.stderr.write(`${GREEN}✅ ${todoId} updated: ${[...Object.keys(updates), ...(now ? ["started"] : []), ...(where ? [where] : [])].join(", ")}${RESET}\n`);
 }
 
 export async function projectCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId?: string) {
