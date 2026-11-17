@@ -289,8 +289,9 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
   const flow = "workflow" in updates ? String(updates.workflow ?? "").trim() : undefined;
   delete updates.workflow;
   const at = flow ? findWorkflowStep(await api.listWorkflows((await api.getTodo(todoId)).projectId), flow) : undefined;
-  if (Object.keys(updates).length) await api.updateTodo(todoId, updates);
+  // The move first: it is what is refused (a run going on, the workflow off), and then nothing else changed.
   if (flow !== undefined) await api.workflowMove(todoId, at?.w.id, at?.node?.id);
+  if (Object.keys(updates).length) await api.updateTodo(todoId, updates);
   if (now) await startNow(api, todoId);
   const where = flow === undefined ? undefined : at ? `workflow "${at.w.name}"${at.node ? ` at ${at.node.title}` : ""}` : "out of its workflow";
   if (args.json) { console.log(JSON.stringify({ todoId, ...updates, ...(now && { started: true }), ...(at && { workflowId: at.w.id, ...(at.node && { workflowNode: at.node.id }) }), ...(flow === "" && { workflowId: null }) })); return; }

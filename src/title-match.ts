@@ -39,3 +39,15 @@ export function findByTitle<T extends { id: string }>(items: T[], query: string,
   if (best.length > 1) return fail(`${best.length} ${what}s match "${query}": use the id\n${list(best.map((x) => x.n))}`);
   return ranked[0].n;
 }
+
+/** The one item `query` names exactly: its id, or its title as written (case aside). Nothing is
+ *  guessed: none fails with what it may have meant, more than one fails listing their ids. */
+export function findExact<T extends { id: string }>(items: T[], query: string, titleOf: (x: T) => string, what: string): T {
+  const q = query.trim().toLowerCase();
+  const hits = items.filter((x) => x.id === query.trim() || titleOf(x).trim().toLowerCase() === q);
+  const list = (xs: T[]) => xs.map((x) => `  ${x.id}  ${titleOf(x)}`).join("\n");
+  if (hits.length === 1) return hits[0];
+  if (hits.length > 1) return fail(`${hits.length} ${what}s are named "${query}": use the id\n${list(hits)}`);
+  const near = items.map((x) => ({ x, s: matchScore(x.id, titleOf(x), query) })).filter((r) => r.s !== undefined).sort((a, b) => a.s! - b.s!).slice(0, 3).map((r) => r.x);
+  return fail(`No ${what} "${query}".${near.length ? ` Did you mean:\n${list(near)}` : ` ${what[0].toUpperCase() + what.slice(1)}s:\n${list(items)}`}`);
+}

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import type { ApiClient } from "@shared/api";
 import { DIM, GREEN, RESET } from "./colors";
 import { readStdin } from "./input";
-import { fail, findByTitle, matchScore } from "./title-match";
+import { fail, findExact } from "./title-match";
 
 export function printWorkflowHelp() {
   process.stderr.write(`
@@ -13,7 +13,8 @@ tfa-cli workflow — the project's workflows (the Workflows view on the board, i
 A workflow is a graph. Trigger nodes wait (time, timeout, watch, webhook, source, composer, human buttons);
 run nodes run (an AI prompt, a shell command on a machine, an inbox builtin). Lines go from → to; "when"
 names the outcome that takes a line (none = plain done). A todo is one run: it moves node to node,
-staying in its board group. <workflow> is an id or a name (matched loosely).
+staying in its board group. <workflow> and <step> are an id or the exact name (case aside); a near
+miss is refused with what it may have meant.
 
 Usage:
   tfa-cli workflow [query]                     List them: id, name, on/off, what starts them
@@ -69,33 +70,28 @@ export function workflowText(w: any, names: (id: string) => string | undefined =
   return out.join("\n");
 }
 
-/** A step of `w` by id or loose title. */
-export const findStep = (w: any, q: string) => findByTitle(w.nodes as any[], q, (n) => n.title, false, `step of "${w.name}"`);
+/** A step of `w` by its id or exact title. */
+export const findStep = (w: any, q: string) => findExact(w.nodes as any[], q, (n) => n.title, `step of "${w.name}"`);
 
-/** The one best match of `q` (as findByTitle ranks), none when nothing or several tie. */
-function best<T extends { id: string }>(items: T[], q: string, titleOf: (x: T) => string): T | undefined {
-  const ranked = items.map((x) => ({ x, s: matchScore(x.id, titleOf(x), q) })).filter((r) => r.s !== undefined).sort((a, b) => a.s! - b.s!);
-  return ranked.length && (ranked.length === 1 || ranked[1].s! > ranked[0].s!) ? ranked[0].x : undefined;
-}
-
-/** "<workflow>" or "<workflow>:<step>". A name may hold ":" itself: the exact name wins, then the one
- *  split where both sides name something; more than one such reading fails. */
+/** "<workflow>" or "<workflow>:<step>", each its id or exact name. A name may hold ":" itself:
+ *  the whole as a name first, then the one split where both sides name something exactly. */
 export function findWorkflowStep(all: any[], spec: string): { w: any; node?: any } {
-  if (all.some((x) => matchScore(x.id, x.name, spec) === 0)) return { w: findByTitle(all, spec, (x) => x.name, true, "workflow") };
+  const named = (q: string) => all.filter((x) => x.id === q.trim() || x.name.trim().toLowerCase() === q.trim().toLowerCase());
+  if (named(spec).length) return { w: findExact(all, spec, (x) => x.name, "workflow") };
   const readings: { w: any; node: any }[] = [];
   for (let i = spec.indexOf(":"); i > 0; i = spec.indexOf(":", i + 1)) {
-    const w = best(all, spec.slice(0, i).trim(), (x) => x.name);
-    const step = spec.slice(i + 1).trim();
-    const node = w && step ? best(w.nodes, step, (n: any) => n.title) : undefined;
+    const [w, more] = named(spec.slice(0, i));
+    const step = spec.slice(i + 1).trim().toLowerCase();
+    const node = w && !more && step ? w.nodes.find((n: any) => n.id === spec.slice(i + 1).trim() || n.title.trim().toLowerCase() === step) : undefined;
     if (node) readings.push({ w, node });
   }
   if (readings.length > 1) fail(`"${spec}" reads more ways: ${readings.map((r) => `"${r.w.name}" at "${r.node.title}"`).join(", ")}. Use the ids: <workflow-id>:<step-id>`);
   if (readings.length) return readings[0];
-  if (spec.includes(":") && !best(all, spec, (x) => x.name)) {
-    const w = best(all, spec.slice(0, spec.lastIndexOf(":")).trim(), (x) => x.name);
-    if (w) return { w, node: findStep(w, spec.slice(spec.lastIndexOf(":") + 1).trim()) }; // fails listing its steps
-  }
-  return { w: findByTitle(all, spec, (x) => x.name, false, "workflow") };
+  // Nothing exact: the workflow part names one, its step does not (it fails listing its steps), else the whole fails.
+  const i = spec.lastIndexOf(":");
+  const [w, more] = i > 0 ? named(spec.slice(0, i)) : [];
+  if (w && !more) return { w, node: findStep(w, spec.slice(i + 1).trim()) };
+  return { w: findExact(all, spec, (x) => x.name, "workflow") };
 }
 
 /** What went along a line: its text's first line and its files ("nothing": an empty output). */
@@ -126,7 +122,7 @@ export async function workflowCommand(api: ApiClient, positionals: string[], arg
   if (!projectId) fail("No project — pass --project <id> or set TODOFORAI_PROJECT_ID");
   const [, verb, target] = positionals;
   const all: any[] = await api.listWorkflows(projectId!);
-  const find = (q: string | undefined, exact = false) => (q ? findByTitle(all, q, (w) => w.name, exact, "workflow") : fail(`Usage: tfa-cli workflow ${verb} <workflow>`));
+  const find = (q: string | undefined) => (q ? findExact(all, q, (w) => w.name, "workflow") : fail(`Usage: tfa-cli workflow ${verb} <workflow>`));
   const names = (id: string) => all.find((w) => w.id === id)?.name;
   const json = (x: unknown) => console.log(JSON.stringify(x, null, 2));
 
@@ -155,14 +151,15 @@ export async function workflowCommand(api: ApiClient, positionals: string[], arg
     return;
   }
   if (verb === "rm") {
-    const w = find(target, true);
+    const w = find(target);
     await api.deleteWorkflow(projectId!, w.id);
     process.stderr.write(`${GREEN}✅ workflow "${w.name}" deleted${RESET}\n`);
     return;
   }
   if (verb === "start") fail('A run is the todo: tfa-cli todo set <todo-id|-> workflow="<workflow>[:<step>]"');
   const query = positionals.slice(verb === "list" ? 2 : 1).join(" ");
-  const shown = query ? [findByTitle(all, query, (w) => w.name, false, "workflow")] : all;
+  // A listing filters: every workflow whose name holds the words.
+  const shown = query ? all.filter((w) => w.id === query || w.name.toLowerCase().includes(query.toLowerCase())) : all;
   if (args.json) { json(shown); return; }
   for (const w of shown) console.log(`${w.id}  ${w.name}  ${DIM}${w.on ? "on" : "off"}${starts(w) ? ` · ${starts(w)}` : ""}${RESET}`);
   if (!shown.length) process.stderr.write(`${DIM}No workflows yet: tfa-cli workflow set <file|-> (see --help)${RESET}\n`);

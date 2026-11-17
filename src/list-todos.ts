@@ -11,7 +11,7 @@
 import { parseArgs } from "util";
 import { TodoStatus, CLOSED_STATUSES, unseenStatus } from "@shared/fbe";
 import { CYAN, DIM, GREEN, YELLOW, RED, RESET } from "./colors";
-import { findByTitle } from "./title-match";
+import { findExact } from "./title-match";
 import { findStep } from "./workflow-command";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -128,9 +128,9 @@ function matchesRequestedStatus(t: any, requested: string[] | null, wanted: Set<
   return (wantOpen && isOpen(s)) || (wanted?.has(s) ?? false);
 }
 
-/** --workflow/--node by id or loose name → the ids the backend filters on. */
+/** --workflow/--node by id or exact name → the ids the backend filters on. */
 async function runFilter(api: any, projectId: string, workflow: string, node?: string) {
-  const w = findByTitle(await api.listWorkflows(projectId), workflow, (x: any) => x.name, false, "workflow");
+  const w = findExact(await api.listWorkflows(projectId), workflow, (x: any) => x.name, "workflow");
   return { workflowId: w.id, ...(node && { workflowNode: findStep(w, node).id }) };
 }
 
