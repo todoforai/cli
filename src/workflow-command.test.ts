@@ -101,6 +101,7 @@ test('two steps of one title fail listing their ids; an id beats a title', () =>
   (process as any).exit = (code: number) => { throw new Error(`exit ${code}`); };
   try { expect(() => findWorkflowStep([twin], 'Twin:Approve')).toThrow('exit 2'); } finally { process.exit = exit; }
   expect(findWorkflowStep([twin], 'Twin:a').node.id).toBe('a');
+  expect(findWorkflowStep([twin, { ...twin, id: 'w8', name: 'w9' }], 'w9:c').w.id).toBe('w9');      // an id beats a name
 });
 
 test('nothing is guessed: a typo or a part of a name fails, saying what it may have meant', () => {

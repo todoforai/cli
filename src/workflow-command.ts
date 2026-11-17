@@ -76,7 +76,11 @@ export const findStep = (w: any, q: string) => findExact(w.nodes as any[], q, (n
 /** "<workflow>" or "<workflow>:<step>", each its id or exact name. A name may hold ":" itself:
  *  the whole as a name first, then the one split where both sides name something exactly. */
 export function findWorkflowStep(all: any[], spec: string): { w: any; node?: any } {
-  const named = <T extends { id: string }>(xs: T[], q: string, titleOf: (x: T) => string) => xs.filter((x) => x.id === q.trim() || titleOf(x).trim().toLowerCase() === q.trim().toLowerCase());
+  // As findExact reads a name: an id first, else the titles as written.
+  const named = <T extends { id: string }>(xs: T[], q: string, titleOf: (x: T) => string) => {
+    const byId = xs.filter((x) => x.id === q.trim());
+    return byId.length ? byId : xs.filter((x) => titleOf(x).trim().toLowerCase() === q.trim().toLowerCase());
+  };
   const workflows = (q: string) => named(all, q, (x) => x.name);
   if (workflows(spec).length) return { w: findExact(all, spec, (x) => x.name, "workflow") };
   const readings: { w: any; node: any }[] = [];
