@@ -29,7 +29,7 @@ Usage:
 JSON shape (what get --json prints):
   { "id", "name", "on", "group"?,
     "nodes": [ { "id", "kind": "trigger", "title", "on": { "kind": "time", "expr": "weekdays@8:30" } },
-               { "id", "kind": "run", "title", "script": { "kind": "ai", "prompt": "…" }, "inputs": [] },
+               { "id", "kind": "run", "title", "script": { "kind": "ai", "prompt": "…" } },
                { "id", "kind": "trigger", "title", "on": { "kind": "human", "buttons": [{ "label": "OK" }, { "label": "Not OK", "outcome": "Not OK" }] } } ],
     "links": [ { "from", "to", "when"? } ] }
   Node "title" is the one sentence on the box ("Gábor checks it"); also "description", "who", "askBefore".

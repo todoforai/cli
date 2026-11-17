@@ -6,7 +6,7 @@ const wf = {
   id: 'w1', name: 'Számlakezelés', on: true, updatedAt: 1, updatedBy: 'u',
   nodes: [
     { id: 'mail', kind: 'trigger', title: 'Számla jön e-mailben', on: { kind: 'source', source: 'gmail' } },
-    { id: 'read', kind: 'run', title: 'AI kiolvassa', script: { kind: 'ai', prompt: 'Olvasd ki' }, inputs: [] },
+    { id: 'read', kind: 'run', title: 'AI kiolvassa', script: { kind: 'ai', prompt: 'Olvasd ki' } },
     { id: 'ok', kind: 'trigger', title: 'Gábor ellenőrzi', on: { kind: 'human', buttons: [{ label: 'OK' }, { label: 'Hibás', outcome: 'Hibás' }] } },
   ],
   links: [{ from: 'mail', to: 'read' }, { from: 'read', to: 'ok' }, { from: 'ok', to: 'read', when: 'Hibás' }],
