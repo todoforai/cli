@@ -8,6 +8,8 @@ on:
 jobs:
   deploy-npm:
     runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.publish.outputs.new_version && format('v{0}', steps.publish.outputs.new_version) }}
     permissions:
       contents: write  # push the release tag with GITHUB_TOKEN
       id-token: write
@@ -91,3 +93,14 @@ jobs:
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
         git push origin "v$NEW_VERSION"
+
+  # Standalone binaries for the installers' no-bun/no-npm fallback.
+  binaries:
+    needs: deploy-npm
+    if: needs.deploy-npm.outputs.tag
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-binaries.yml
+    with:
+      tag: ${{ needs.deploy-npm.outputs.tag }}
+    secrets: inherit
