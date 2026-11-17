@@ -34,7 +34,7 @@ Examples:
   tfa-cli project list|set|settings|groups|default|agent … # Projects; edit the current one
   tfa-cli notes [query] | get|append|edit|new|rm <title> …  # The project's Notes (board note cards), by fuzzy title
   tfa-cli widgets [query] | get|set|add|rename|rm …   # Board widgets (live show/todo/url cards), by fuzzy title
-  tfa-cli workflow [query] | get|set|on|off|rm|start …  # Workflows: trigger + run nodes, lines (tfa-cli workflow --help)
+  tfa-cli workflow [query] | get|set|on|off|rm …  # Workflows: trigger + run nodes, lines (tfa-cli workflow --help)
   tfa-cli brand [show|create|rename|voice …]    # The project's brand page + voice learning
   tfa-cli device list|rename|wallpaper …        # Paired machines
   tfa-cli machine size [--disk 20] [--memory 4] [--cpus 2] [--yes]  # Cloud machine size + price (resize asks, restarts it)

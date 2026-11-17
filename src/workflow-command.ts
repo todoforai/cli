@@ -31,6 +31,16 @@ A run is the todo itself, so runs are handled as todos:
   tfa-cli todo set <todo-id|-> workflow=""     Take it out of its workflow (the todo stays)
   tfa-cli todo workflow <todo-id|->            Its path: each step with what came in and what it gave on
   tfa-cli todo next <todo-id|-> ["outcome"]    Finish its node: plain done, or along the line "outcome"
+                                               (refused while its shell box still runs)
+
+What a box gets and gives (its input = what the step before gave on):
+  ai     the input as its message, input files attached; gives its last answer and that answer's files
+  shell  runs on "machine" in its own dir: input text on stdin, input files in $TFA_IN; gives its
+         stdout and the files it writes to $OUT; exit 0 = plain line, else the "failed" line; 10 min max
+  human  waits for one of its buttons (in the app, or todo next); passes its input on unchanged
+  time / timeout / watch / webhook   wait; a fire's payload is the next box's input
+A run that stopped (server restart, machine offline, lost result) is marked "Stuck: …" in its chat
+with when, and asks for review: put it back at that step (todo set … workflow="<workflow>:<step>").
 
 JSON shape (what get --json prints):
   { "id", "name", "on", "group"?,
