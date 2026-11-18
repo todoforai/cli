@@ -550,10 +550,11 @@ async function main() {
     return;
   }
 
+  // Legacy alias of `tfa-device connect` (out of --help; agents may still call it).
   if (positionals[0] === "connect") {
     const keys = positionals.slice(1);
     const todoId = aliasTodoId(args.alias) || getEnv("TODO_ID") || cfgScope.data.last_todo_id;
-    if (!keys.length || !todoId) { process.stderr.write(`${RED}Usage: tfa-cli connect <key> [<key>…] [--reason "why"]${RESET}\n`); process.exit(2); }
+    if (!keys.length || !todoId) { process.stderr.write(`${RED}Usage: tfa-device connect <key>… [--reason "why"]${RESET}\n`); process.exit(2); }
     // connect is device-bound (the backend reads the machine from the dst_ token),
     // so prefer the shell's device-session token over a stored user API key.
     const envToken = getEnv("API_TOKEN");
