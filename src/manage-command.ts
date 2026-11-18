@@ -29,6 +29,10 @@ Usage:
                                                 gave on, the ways on from here (--json: as is)
   tfa-cli todo next <todo-id|-> ["outcome"]     Finish its node: plain done, or along the line named
                                                 "outcome"; during its own agent run: when that ends
+  tfa-cli todo card <todo-id|-> title=… ref=… [section=…] [body=…] [url=…] [source=…]
+                                                From the box its run is at, file a card into its workflow's
+                                                group (section = one of the group's); the same ref again
+                                                re-sections that card, never doubles it
 
 Fields (PUT /todos/{id}):
   title            first-line content (alias: content)
@@ -264,6 +268,15 @@ export async function todoCommand(api: ApiClient, positionals: string[], args: R
     if (args.json) { console.log(JSON.stringify(r)); return; }
     const where = r.to !== undefined ? `on to ${r.toTitle ?? r.to}` : "done: the end of its run";
     process.stderr.write(`${GREEN}✅ ${r.pending ? `goes ${where} when this agent run ends` : where}${RESET}\n`);
+    return;
+  }
+  if (sub === "card") {
+    // Raw strings: a ref like 0123 or 1e400 stays as written.
+    const f: Record<string, string> = Object.fromEntries(rest.map((a) => [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)]));
+    if (!todoId || !f.title || !f.ref) fail('Usage: tfa-cli todo card <todo-id|-> title="…" ref=<stable id> [section="…"] [body="…"] [url=…] [source=…]');
+    const r = await api.workflowCard({ todoId, title: f.title, ref: f.ref, section: f.section, body: f.body, url: f.url, source: f.source });
+    if (args.json) { console.log(JSON.stringify(r)); return; }
+    process.stderr.write(`${GREEN}✅ ${r.created ? "filed" : "already filed, kept"} ${r.todoId}${r.section ? ` in ${r.section}` : ""}${RESET}\n`);
     return;
   }
   if (sub === "workflow" || sub === "flow") {
