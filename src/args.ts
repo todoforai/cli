@@ -47,7 +47,7 @@ Examples:
   tfa-cli show <file|-> [todo-id]     # Render a local file (image/pdf/html…) in the chat; - = stdin
   tfa-cli show list|ref|rm …          # List / re-surface / take down shown files
   tfa-cli open <url> [todo-id]        # Live url preview in the chat
-  tfa-cli connect <key>… [--reason "why"]  # Sign-in card for connectors on this machine (several keys = one choice)
+  tfa-cli connect <key>… [--reason "why"]  # Sign-in card for connectors on this machine (several keys = one choice); same as tfa-device connect; tfa-device tools [query] shows each tool's state
   tfa-cli recommend --template <id> | --title "…" [--note "why"]  # ✧ proposal card
   tfa-cli inbox [needs-you|messages|activity] [--unread]  # Read the notification feed (the bell)
   tfa-cli inbox seen [tab]              # Mark notifications read
