@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { ApiClient } from "@shared/api";
 import { DIM, GREEN, RESET } from "./colors";
 import { readStdin } from "./input";
-import { fail, findByTitle, matchScore } from "./title-match";
+import { fail, findByTitle, searchByTitle } from "./title-match";
 
 export function printNotesHelp() {
   process.stderr.write(`
@@ -58,7 +58,7 @@ export async function notesCommand(api: ApiClient, positionals: string[], args: 
 
   if (!verb || !["get", "append", "edit", "new", "rm"].includes(verb)) {
     const query = positionals.slice(verb === "list" ? 2 : 1).join(" ");
-    const shown = query ? notes.filter((n: any) => matchScore(n.id, noteTitle(n), query) !== undefined) : notes;
+    const shown = query ? searchByTitle(notes, query, noteTitle, "note") : notes;
     if (args.json) { console.log(JSON.stringify(shown, null, 2)); return; }
     for (const n of shown) console.log(`${n.id}  ${noteTitle(n)}${n.group ? `  ${DIM}in ${n.group}${RESET}` : ""}`);
     return;

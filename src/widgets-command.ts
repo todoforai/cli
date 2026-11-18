@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { ApiClient } from "@shared/api";
 import { DIM, GREEN, RESET } from "./colors";
 import { getEnv } from "./args";
-import { fail, findByTitle, matchScore } from "./title-match";
+import { fail, findByTitle, searchByTitle } from "./title-match";
 
 export function printWidgetsHelp() {
   process.stderr.write(`
@@ -69,7 +69,7 @@ export async function widgetsCommand(api: ApiClient, positionals: string[], args
 
   if (!verb || !["get", "set", "add", "rename", "rm"].includes(verb)) {
     const query = positionals.slice(verb === "list" ? 2 : 1).join(" ");
-    const shown = query ? widgets.filter((w: any) => matchScore(w.id, widgetTitle(w), query) !== undefined) : widgets;
+    const shown = query ? searchByTitle(widgets, query, widgetTitle, "widget") : widgets;
     if (args.json) { console.log(JSON.stringify(shown, null, 2)); return; }
     for (const w of shown) console.log(`${w.id}  ${widgetTitle(w)}  ${DIM}${[kindOf(w), w.ref, w.group && `in ${w.group}`].filter(Boolean).join("  ")}${RESET}`);
     return;

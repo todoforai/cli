@@ -25,9 +25,9 @@ test('findNote matches a dictation typo, accents and substrings', () => {
 test('append adds a line to the matched note, never to a ref card', async () => {
   const api = { listProjectSurfaces: async () => notes, upsertProjectSurface: mock(async (_p: string, id: string, f: any) => ({ id, ...f })) };
   await notesCommand(api as any, ['notes', 'append', 'vibe hack', '- Meeting', 'csütörtök'], {}, 'p');
-  expect(api.upsertProjectSurface).toHaveBeenLastCalledWith('p', 'note-1', { body: 'https://x.com/a\nr\n- Meeting csütörtök' });
+  expect(api.upsertProjectSurface).toHaveBeenLastCalledWith('p', 'note-1', { body: 'https://x.com/a\nr\n- Meeting csütörtök', baseUpdatedAt: 0 });
   await notesCommand(api as any, ['notes', 'edit', 'note-3', 'új'], {}, 'p');
-  expect(api.upsertProjectSurface).toHaveBeenLastCalledWith('p', 'note-3', { body: 'új' });
+  expect(api.upsertProjectSurface).toHaveBeenLastCalledWith('p', 'note-3', { body: 'új', baseUpdatedAt: 0 });
 });
 
 test('the text after -- keeps a leading markdown dash', async () => {
@@ -35,4 +35,10 @@ test('the text after -- keeps a leading markdown dash', async () => {
   const argv = process.argv;
   process.argv = ['bun', 'tfa-cli', 'notes', 'append', 'vibe hack', '--', '- Meeting'];
   try { expect(parseCliArgs().positionals).toEqual(['notes', 'append', 'vibe hack', '- Meeting']); } finally { process.argv = argv; }
+});
+
+test('swapped letters and joined words still match', () => {
+  expect(matchScore('n1', 'CLI teszt jegyzet', 'cli tezst')).toBeDefined();
+  expect(matchScore('n2', 'y-combinator', 'ycomb')).toBeDefined();
+  expect(matchScore('n3', 'y-combinator', 'kutya')).toBeUndefined();
 });
