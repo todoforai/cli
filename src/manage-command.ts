@@ -60,7 +60,7 @@ Fields (PUT /todos/{id}):
 
 Row HTML (todo html): a bare HTML fragment drawn live INSIDE the todo's board row, under its title
   (and pinned under the title bar of its open chat, there full chat width) —
-  the html_snippet harness: theme tokens, styled bare <button>/<input>, todo.exec/chat/connect/show.
+  the tfa-show --bare harness: theme tokens, styled bare <button>/<input>, todo.exec/chat/connect/show.
   Space: the row's width (~300-360px on desktop, full width on a phone) minus a 34px left indent,
   at most 160px tall (clipped below); transparent on the row. Keep it to one line of chips/buttons,
   a progress bar, a mini stat. todo.chat posts into THAT todo (starts a run with its agent).
