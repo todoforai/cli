@@ -44,9 +44,6 @@ Examples:
   tfa-cli delete <todo-id>              # Move a todo to the Trash (restorable 30 days)
   tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
   tfa-cli start-now <todo-id>           # Start a draft / scheduled todo now
-  tfa-cli show <file|-> [todo-id]     # Render a local file (image/pdf/html…) in the chat; - = stdin
-  tfa-cli show list|ref|rm …          # List / re-surface / take down shown files
-  tfa-cli open <url> [todo-id]        # Live url preview in the chat
   tfa-cli recommend --template <id> | --title "…" [--note "why"]  # ✧ proposal card
   tfa-cli inbox [needs-you|messages|activity] [--unread]  # Read the notification feed (the bell)
   tfa-cli inbox seen [tab]              # Mark notifications read
