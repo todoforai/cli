@@ -611,12 +611,9 @@ async function main() {
 
   if (positionals[0] === "claim" && positionals[1] === "mint") {
     // Mint single-use /claim/<token> links that fork a project you own into a
-    // fresh anonymous account per recipient. `--seed` (or --project/default).
-    let seedProjectId = (args.seed as string) || (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
-    if (!seedProjectId) {
-      const projects = await api.listProjects();
-      seedProjectId = projects.find((p: any) => p.project?.isDefault)?.project?.id || projects[0]?.project?.id;
-    }
+    // fresh anonymous account per recipient. Minting makes the seed public, so it is never guessed:
+    // `--seed` (or --project / the configured project).
+    const seedProjectId = (args.seed as string) || (args.project as string) || getEnv("PROJECT_ID") || cfgScope.data.default_project_id;
     if (!seedProjectId) { process.stderr.write(`${RED}Usage: tfa-cli claim mint --seed <projectId> [--emails a@x,b@y] [--ttl <sec>]${RESET}\n`); process.exit(2); }
     const emails = (args.emails as string | undefined)?.split(",").map((e) => e.trim()).filter(Boolean);
     let ttlSec: number | undefined;
