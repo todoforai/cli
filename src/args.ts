@@ -106,7 +106,7 @@ Usage:
                                       so a later chat can revise a show made elsewhere
   tfa-cli show ref <ref|alias> [todo-id]  Re-post a show (any todo) at the chat bottom, live
   tfa-cli show share <ref|alias>      Make it public; prints its link (serves the latest version)
-  tfa-cli show unshare <ref|alias>    Make it private again (the link stops working)
+  tfa-cli show unshare <ref|alias>    Turn off that view link (an app-made edit link stays: Share → Stop sharing)
   tfa-cli show rm <ref|alias>         Take it down (block, link, every version)
   tfa-cli show list [todo-id]         List show blocks (ref, title, mime/url, renderer)
                                       [--project <id>] [--renderer <name>] [--json]
