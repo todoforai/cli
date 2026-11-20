@@ -17,7 +17,7 @@ Usage:
   tfa-cli agent create [<field=value>…]         Create an agent (defaults, then apply fields)
   tfa-cli agent global [<field=value>…]         Show / update the user's global agent defaults
   tfa-cli agent reorder <agent>…                Set the sidebar order (names or ids)
-  tfa-cli agent delete <agent>                  Delete an agent configuration (asks to confirm)
+  tfa-cli agent delete <agent> [--yes]          Delete an agent configuration (asks to confirm; --yes skips)
 
 <agent> is a name or id (unique partial name also works).
 Fields map directly to agent settings; values are parsed as JSON when possible
@@ -41,7 +41,7 @@ Examples:
   tfa-cli agent update <agent> judgeSysmsg="Ask before sending email."   (approval checker; ""=off, null=inherit global)
   tfa-cli agent update <agent> permissions='{"allow":[…],"ask":[…],"deny":[…]}'   (replaces all three lists; read them with get --json first)
 
-From an agent shell (dst_ token) edgesMcpConfigs, devicesConfig, toolProfiles and delete are refused by the backend.
+From an agent shell (dst_ token) edgesMcpConfigs, devicesConfig and toolProfiles are refused by the backend.
 `);
 }
 
@@ -153,9 +153,10 @@ export async function agentCommand(
     const agents = await api.listAgentSettings();
     const agent = resolveAgent(agents, query);
     const name = getDisplayName(agent);
-    if (!process.stdin.isTTY) { process.stderr.write(`${RED}Refusing to delete '${name}' non-interactively (delete needs an interactive confirm).${RESET}\n`); process.exit(2); }
-    const ok = await singleChar(`${RED}Delete agent '${name}'? [y/N] ${RESET}`);
-    if (ok !== "y") { process.stderr.write("Aborted\n"); return; }
+    if (!args.yes) {
+      if (!process.stdin.isTTY) { process.stderr.write(`${RED}Refusing to delete '${name}' non-interactively without --yes.${RESET}\n`); process.exit(2); }
+      if (await singleChar(`${RED}Delete agent '${name}'? [y/N] ${RESET}`) !== "y") { process.stderr.write("Aborted\n"); return; }
+    }
     await api.deleteAgentSettings(getItemId(agent));
     process.stderr.write(`${GREEN}✅ Deleted ${name}${RESET}\n`);
     return;
