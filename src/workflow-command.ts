@@ -1,6 +1,7 @@
 /** `workflow` — the project's workflows: script graphs of trigger nodes (what waits) and run nodes (what runs). */
 
 import { readFileSync } from "node:fs";
+import { WORKFLOW_FEED_MACHINE } from "@shared/fbe";
 import type { ApiClient } from "@shared/api";
 import { DIM, GREEN, RESET } from "./colors";
 import { readStdin } from "./input";
@@ -50,6 +51,19 @@ JSON shape (what get --json prints):
     "links": [ { "from", "to", "when"? } ] }
   Node "title" is the one sentence on the box ("Gábor checks it"); also "description", "who", "askBefore".
 
+Common 1-step patterns (standing automations, crons, watches, RSS feeds and group feeds are all workflows):
+  • Act on each item (AI run): connect the trigger to a { "id": "work", "kind": "run", "title": "…", "script": { "kind": "ai", "prompt": "…" } } node.
+  • File & triage into a board group: set top-level "group": "<slug>" and connect the trigger to triage (builtin: "triage", mode: "d3") → merge (builtin: "merge", mode: "d3").
+  • Watch trigger: "on": { "kind": "watch", "expr": "<word>", "cmd": "<check>", "machine": "<your deviceId from tfa-device --json>", "everyMs": 300000 }
+    ("expr" must hold the single word the watch feeds; for RSS/Atom/JSON feed URLs, set "machine": "engine" and "cmd": "https://…/feed.xml").
+  • Copyable 1-step recurring workflow JSON:
+    { "name": "Weekly SEO snapshot", "on": true, "group": "marketing",
+      "nodes": [
+        { "id": "start", "kind": "trigger", "title": "Every Monday 08:00", "on": { "kind": "time", "expr": "mon@8:00", "timeZone": "Europe/Budapest" } },
+        { "id": "work", "kind": "run", "title": "Run SEO check", "script": { "kind": "ai", "prompt": "Run track.sh and update the SEO notes." } }
+      ],
+      "links": [{ "from": "start", "to": "work" }] }
+
 Examples:
   tfa-cli workflow get "számlák" --json > wf.json && $EDITOR wf.json && tfa-cli workflow set wf.json
   tfa-cli todo next - "Not OK"
@@ -59,7 +73,7 @@ Examples:
 const on = (t: any): string => {
   switch (t.kind) {
     case "time": case "timeout": return `${t.kind} ${t.expr}`;
-    case "watch": return `watch "${t.cmd}" on ${t.machine} every ${Math.round(t.everyMs / 60_000)}m`;
+    case "watch": return `watch "${t.cmd}" ${t.machine === WORKFLOW_FEED_MACHINE ? "(feed)" : `on ${t.machine}`} every ${Math.round(t.everyMs / 60_000)}m`;
     case "webhook": return `webhook${t.key ? ` ${t.key}` : ""}`;
     case "source": return `source ${t.source}`;
     case "human": return `human ${t.buttons.map((b: any) => `[${b.label}]`).join(" ")}`;
