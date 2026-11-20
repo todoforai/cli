@@ -54,6 +54,9 @@ JSON shape (what get --json prints):
 Common 1-step patterns (standing automations, crons, watches, RSS feeds and group feeds are all workflows):
   • Act on each item (AI run): connect the trigger to a { "id": "work", "kind": "run", "title": "…", "script": { "kind": "ai", "prompt": "…" } } node.
   • File & triage into a board group: set top-level "group": "<slug>" and connect the trigger to triage (builtin: "triage", mode: "d3") → merge (builtin: "merge", mode: "d3").
+  • Wake a todo on each fire (no new run): a lone trigger with "todo": "<todoId>", e.g.
+    { "id": "start", "kind": "trigger", "title": "Every Monday 08:00", "todo": "<todoId>", "description": "Weekly check: …",
+      "on": { "kind": "time", "expr": "mon@8:00" } }   (time, watch or webhook; no lines; the description is the message)
   • Watch trigger: "on": { "kind": "watch", "expr": "<word>", "cmd": "<check>", "machine": "<your deviceId from tfa-device --json>", "everyMs": 300000 }
     ("expr" must hold the single word the watch feeds; for RSS/Atom/JSON feed URLs, set "machine": "engine" and "cmd": "https://…/feed.xml").
   • Copyable 1-step recurring workflow JSON:
@@ -88,7 +91,7 @@ export function workflowText(w: any, names: (id: string) => string | undefined =
   const title = (id: string) => (id.startsWith("wf:") ? `workflow "${names(id.slice(3)) ?? id.slice(3)}"` : id);
   const out = [`${w.name}  ${DIM}${w.on ? "on" : "off"}${w.group ? `, into ${w.group}` : ""}  (${w.id})${RESET}`];
   for (const n of w.nodes) {
-    out.push(`  ${n.kind === "trigger" ? "⚡" : "▶"} ${n.id}  ${n.title}  ${DIM}${n.kind === "trigger" ? on(n.on) : script(n.script)}${RESET}`);
+    out.push(`  ${n.kind === "trigger" ? "⚡" : "▶"} ${n.id}  ${n.title}  ${DIM}${n.kind === "trigger" ? on(n.on) + (n.todo ? ` → wakes todo ${n.todo}` : "") : script(n.script)}${RESET}`);
     for (const l of w.links.filter((x: any) => x.from === n.id)) out.push(`      → ${title(l.to)}${l.when ? `  ${DIM}(${l.when})${RESET}` : ""}`);
   }
   return out.join("\n");
