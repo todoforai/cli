@@ -2,7 +2,6 @@
 
 import { readFileSync } from "fs";
 import { basename } from "path";
-import { randomUUID } from "node:crypto";
 import type { ApiClient } from "@shared/api";
 import { DIM, GREEN, RESET } from "./colors";
 import { getEnv } from "./args";
@@ -45,6 +44,23 @@ export const showRefOf = (ref: string) => {
   return i > 0 && UUID.test(ref.slice(0, i)) ? { todoId: ref.slice(0, i), key: ref.slice(i + 1) } : undefined;
 };
 
+const ALIAS = /^[A-Za-z0-9._-]{1,64}$/;
+
+/** Same deterministic surface id as the web app (`frontend/src/lib/refs.ts:surfaceIdFor`). */
+export function surfaceIdFor(rawRef: string, group?: string): string {
+  const ref = rawRef.trim();
+  let h = 0;
+  for (const c of ref) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const show = showRefOf(ref);
+  const validShow = show && (UUID.test(show.key) || ALIAS.test(show.key)) ? show : undefined;
+  const label = validShow ? (UUID.test(validShow.key) ? `show ${validShow.key.slice(0, 8)}` : validShow.key)
+    : UUID.test(ref) ? ref.slice(0, 8)
+    : /^https?:\/\//i.test(ref) ? (() => { try { return new URL(ref).host; } catch { return ref; } })()
+    : ref;
+  const base = `${label.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 40)}-${h.toString(36)}`;
+  return group ? `${base}-${group.replace(/[^A-Za-z0-9._-]/g, '-').slice(-12)}` : base;
+}
+
 /** The name the board shows: a rename on the card, else the show's title, file, url host, else the ref. */
 export function widgetTitle(w: any): string {
   const show = w.show ?? {};
@@ -82,7 +98,7 @@ export async function widgetsCommand(api: ApiClient, positionals: string[], args
     if (showRefOf(ref)) { const { todoId, key } = showRefOf(ref)!; await api.getShowBlock(todoId, key); } // fail now on a wrong ref, not as a broken card
     const group = args.group as string | undefined;
     const same = widgets.find((w: any) => w.ref === ref && (w.group ?? undefined) === group);
-    const id = same?.id ?? `widget-${randomUUID().slice(0, 8)}`;
+    const id = same?.id ?? surfaceIdFor(ref, group);
     const w = await api.upsertProjectSurface(projectId!, id, { ref, ...(args.title ? { title: args.title } : {}), ...(group ? { group } : {}) });
     if (args.json) { console.log(JSON.stringify(w, null, 2)); return; }
     process.stderr.write(`${GREEN}✅ widget ${id} ${same ? "updated" : "added"}: ${ref}${group ? ` in ${group}` : ""}${RESET}\n`);

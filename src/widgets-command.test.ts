@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test';
-import { widgetTitle, widgetsCommand } from './widgets-command';
+import { surfaceIdFor, widgetTitle, widgetsCommand } from './widgets-command';
 
 const T = 'd422b306-2725-4a03-a370-91c97fa20443';
 const surfaces = [
@@ -29,4 +29,16 @@ test('set sends new bytes to the block address; rm takes only an exact title', a
   expect(replaceShowContent.mock.calls[1].slice(0, 2)).toEqual([T, 'blk']);
   await widgetsCommand(api as any, ['widgets', 'rm', 'Sajtófigyelés'], {}, 'p');
   expect(deleteProjectSurface).toHaveBeenCalledWith('p', 'sajtofigyeles');
+});
+
+test('add uses deterministic surfaceIdFor matching the web app', async () => {
+  const upsertProjectSurface = mock(async (_p: string, id: string, body: any) => ({ id, ...body }));
+  const api = {
+    listProjectSurfaces: async () => [],
+    getShowBlock: async () => ({ block: { id: 'b1', alias: 'kpi' } }),
+    upsertProjectSurface,
+  };
+  await widgetsCommand(api as any, ['widgets', 'add', `${T}:kpi`], { group: 'marketing' }, 'p');
+  expect(surfaceIdFor(`${T}:kpi`, 'marketing')).toBe('kpi-7mpqqn-marketing');
+  expect(upsertProjectSurface).toHaveBeenCalledWith('p', 'kpi-7mpqqn-marketing', { ref: `${T}:kpi`, group: 'marketing' });
 });
