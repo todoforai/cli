@@ -34,28 +34,17 @@ export async function autoCreateAgent(api: ApiClient, resolvedPath: string): Pro
   if (api.apiKey.startsWith("dst_")) {
     throw new Error("an agent shell cannot bind workspaces; pass --agent <name> or create the agent in the app");
   }
-  // The CLI spawns a bridge, so prefer the local bridge device; fall back to the
-  // single legacy edge for hosts that still run the edge daemon.
+  // The CLI spawns a bridge; its device is the only machine a workspace agent wires to.
   const deviceId = bridgeDeviceId(api.apiUrl);
-  let edgeId: string | undefined;
-  if (!deviceId) {
-    const edges = await api.listEdges();
-    if (!Array.isArray(edges) || edges.length === 0) {
-      throw new Error("No bridge device or edge available to configure workspace path");
-    }
-    if (edges.length > 1) {
-      throw new Error("No local bridge device found and multiple legacy edges are available; choose an existing agent explicitly");
-    }
-    edgeId = edges[0].id;
-  }
+  if (!deviceId) throw new Error("No local bridge device found to configure the workspace path; pair this machine with `todoforai-bridge login`");
   // One idempotent server call: finds or creates + names + wires, so a failed step or
   // two concurrent launches can't leave orphan "<folder>" agents behind.
   try {
-    const { agent } = await api.ensureAgentForWorkspace({ workspacePaths: [resolvedPath], deviceId, edgeId, name: basename(resolvedPath) || "default" });
+    const { agent } = await api.ensureAgentForWorkspace({ workspacePaths: [resolvedPath], deviceId, name: basename(resolvedPath) || "default" });
     return agent;
   } catch (e: any) {
     const m = e?.message ?? "";
-    if (/ 404 /.test(m) && !/(Device|Edge|User) not found/.test(m)) throw new Error(`this server (${api.apiUrl}) is too old to create workspace agents; update it or pass --agent <name>`);
+    if (/ 404 /.test(m) && !/(Device|User) not found/.test(m)) throw new Error(`this server (${api.apiUrl}) is too old to create workspace agents; update it or pass --agent <name>`);
     throw e;
   }
 }
