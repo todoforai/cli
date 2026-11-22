@@ -40,6 +40,7 @@ import { machineCommand, printMachineHelp } from "./machine-command";
 import { todoCommand, projectCommand, brandCommand, deviceCommand, printTodoHelp, printProjectHelp, printBrandHelp, printDeviceHelp, voiceDeviceCommand } from "./manage-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { inboxCommand, notifyCommand, printInboxHelp, printNotifyHelp } from "./notify-command";
+import { connectionsCommand, printConnectionsHelp } from "./connections-command";
 import { importCommand, printImportHelp } from "./import-command";
 import { memoryCommand, printMemoryHelp } from "./memory-command";
 import { notesCommand, printNotesHelp } from "./notes-command";
@@ -211,6 +212,7 @@ async function main() {
   if (positionals[0] === "device" && args.help) { printDeviceHelp(); process.exit(0); }
   if (positionals[0] === "machine" && args.help) { printMachineHelp(); process.exit(0); }
   if (positionals[0] === "inbox" && args.help) { printInboxHelp(); process.exit(0); }
+  if (positionals[0] === "connections" && args.help) { printConnectionsHelp(); process.exit(0); }
   if (positionals[0] === "notify" && args.help) { printNotifyHelp(); process.exit(0); }
   if (positionals[0] === "import" && args.help) { printImportHelp(); process.exit(0); }
   if (positionals[0] === "memory" && args.help) { printMemoryHelp(); process.exit(0); }
@@ -221,7 +223,7 @@ async function main() {
   if (positionals[0] === "import" && args["dry-run"]) { await importCommand(null, positionals, args); return; }
   if ((positionals[0] === "list" || positionals[0] === "ls") && args.help) { printListTodosHelp(); process.exit(0); }
   // Subcommands with their own --help handle it themselves.
-  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device", "inbox", "notify", "import", "memory", "notes", "widgets", "workflow"].includes(positionals[0])) { printUsage(); process.exit(0); }
+  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device", "connections", "inbox", "notify", "import", "memory", "notes", "widgets", "workflow"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
   // ── flag compatibility — validated ONCE here, so no later branch can
   // silently ignore a flag (e.g. --template returning before an --isolated
@@ -391,6 +393,7 @@ async function main() {
   if (positionals[0] === "device") { await deviceCommand(api, positionals, args); return; }
   if (positionals[0] === "machine") { await machineCommand(api, positionals, args); return; }
   if (positionals[0] === "inbox") { await inboxCommand(api, positionals, args); return; }
+  if (positionals[0] === "connections") { await connectionsCommand(api, args); return; }
   if (positionals[0] === "notify") { await notifyCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "widgets") { await widgetsCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "notes") { await notesCommand(api, positionals, args, scopedProject); return; }

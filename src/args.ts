@@ -37,6 +37,7 @@ Examples:
   tfa-cli workflow [query] | get|set|on|off|rm …  # Workflows: trigger + run nodes, lines (tfa-cli workflow --help)
   tfa-cli brand [show|create|rename|voice …]    # The project's brand page + voice learning
   tfa-cli device list|rename|wallpaper …        # Paired machines
+  tfa-cli connections [--json]                   # What is live now: tabs, apps, bridges, browsers, phones
   tfa-cli machine size [--disk 20] [--memory 4] [--cpus 2] [--yes]  # Cloud machine size + price (resize asks, restarts it)
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated)
   tfa-cli status <todo-id> <STATUS>     # Update a todo's status
@@ -164,7 +165,7 @@ const WORD_FLAGS: Record<string, string> = {
   config: "show-config",
 };
 // Subcommands that print their own help; anywhere else a second positional is data.
-const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "machine", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "widgets", "workflow"];
+const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "connections", "machine", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "widgets", "workflow"];
 
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
