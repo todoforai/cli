@@ -3,6 +3,7 @@
 import { readFileSync } from "fs";
 import { basename } from "path";
 import type { ApiClient } from "@shared/api";
+import { isTodoRef, parseRef, surfaceIdFor } from "@shared/fbe/refs";
 import { DIM, GREEN, RESET } from "./colors";
 import { getEnv } from "./args";
 import { fail, findByTitle, searchByTitle } from "./title-match";
@@ -27,7 +28,7 @@ Usage:
   tfa-cli widgets rm <widget>               Take it off the board (id or exact title; the show stays)
 
 A renderer widget (show list says renderer=<name>): the show file is its data (often JSON), the
-renderer is its HTML template, shared by every widget using it: tfa-surface card get|add <name>.
+renderer is its HTML template, shared by every widget using it: tfa-surface renderer get|add <name>.
 
 Examples:
   tfa-cli widgets get "sajtó" > data.json && jq … data.json > new.json && tfa-cli widgets set "sajtó" new.json
@@ -35,31 +36,15 @@ Examples:
 `);
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hostOf = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };
 
 /** `<todoId>:<key>` → the show it names; anything else (todo id, url) isn't a show. */
 export const showRefOf = (ref: string) => {
-  const i = ref.indexOf(":");
-  return i > 0 && UUID.test(ref.slice(0, i)) ? { todoId: ref.slice(0, i), key: ref.slice(i + 1) } : undefined;
+  const r = parseRef(ref);
+  return r?.kind === "show" ? { todoId: r.todoId, key: r.key } : undefined;
 };
 
-const ALIAS = /^[A-Za-z0-9._-]{1,64}$/;
-
-/** Same deterministic surface id as the web app (`frontend/src/lib/refs.ts:surfaceIdFor`). */
-export function surfaceIdFor(rawRef: string, group?: string): string {
-  const ref = rawRef.trim();
-  let h = 0;
-  for (const c of ref) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  const show = showRefOf(ref);
-  const validShow = show && (UUID.test(show.key) || ALIAS.test(show.key)) ? show : undefined;
-  const label = validShow ? (UUID.test(validShow.key) ? `show ${validShow.key.slice(0, 8)}` : validShow.key)
-    : UUID.test(ref) ? ref.slice(0, 8)
-    : /^https?:\/\//i.test(ref) ? (() => { try { return new URL(ref).host; } catch { return ref; } })()
-    : ref;
-  const base = `${label.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 40)}-${h.toString(36)}`;
-  return group ? `${base}-${group.replace(/[^A-Za-z0-9._-]/g, '-').slice(-12)}` : base;
-}
+export { surfaceIdFor };
 
 /** The name the board shows: a rename on the card, else the show's title, file, url host, else the ref. */
 export function widgetTitle(w: any): string {
@@ -80,7 +65,7 @@ export async function widgetsCommand(api: ApiClient, positionals: string[], args
   const [, verb, target, ...rest] = positionals;
   const widgets = (await api.listProjectSurfaces(projectId!)).filter((s: any) => s.ref);
   // A todo widget is named by its todo's title on the board: fetch those (few) so it is findable by name.
-  await Promise.all(widgets.filter((w: any) => UUID.test(w.ref)).map(async (w: any) => { w.todoTitle = (await api.getTodo(w.ref).catch(() => null))?.content?.split("\n")[0]?.slice(0, 80); }));
+  await Promise.all(widgets.filter((w: any) => isTodoRef(w.ref)).map(async (w: any) => { w.todoTitle = (await api.getTodo(w.ref).catch(() => null))?.content?.split("\n")[0]?.slice(0, 80); }));
   const find = (q: string, exact = false) => findByTitle(widgets, q, widgetTitle, exact, "widget");
 
   if (!verb || !["get", "set", "add", "rename", "rm"].includes(verb)) {
@@ -94,7 +79,7 @@ export async function widgetsCommand(api: ApiClient, positionals: string[], args
 
   if (verb === "add") {
     const here = getEnv("TODO_ID");
-    const ref = UUID.test(target) || /^https?:\/\//i.test(target) || showRefOf(target) ? target : here ? `${here}:${target}` : fail("A bare alias needs a current todo: pass <todoId>:<alias>");
+    const ref = isTodoRef(target) || /^https?:\/\//i.test(target) || showRefOf(target) ? target : here ? `${here}:${target}` : fail("A bare alias needs a current todo: pass <todoId>:<alias>");
     if (showRefOf(ref)) { const { todoId, key } = showRefOf(ref)!; await api.getShowBlock(todoId, key); } // fail now on a wrong ref, not as a broken card
     const group = args.group as string | undefined;
     const same = widgets.find((w: any) => w.ref === ref && (w.group ?? undefined) === group);
