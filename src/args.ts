@@ -42,6 +42,7 @@ Examples:
   tfa-cli list [-n 30] [--cursor N] [--all] [--status S]  # List todos (paginated)
   tfa-cli status <todo-id> <STATUS>     # Update a todo's status
   tfa-cli update                        # Update tfa-cli itself (also auto-updates in background; NO_UPDATE_NOTIFIER=1 disables)
+  tfa-cli changelog [cli|bridge|app|all] # Recent release notes (--limit N, --since <ver>, --json)
   tfa-cli delete <todo-id>              # Move a todo to the Trash (restorable 30 days)
   tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
   tfa-cli start-now <todo-id>           # Start a draft / scheduled todo now
@@ -165,7 +166,7 @@ const WORD_FLAGS: Record<string, string> = {
   config: "show-config",
 };
 // Subcommands that print their own help; anywhere else a second positional is data.
-const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "connections", "machine", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "widgets", "workflow"];
+const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "connections", "machine", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "widgets", "workflow", "changelog"];
 
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
@@ -216,6 +217,7 @@ export function parseCliArgs() {
       to: { type: "string" },
       unread: { type: "boolean", default: false },
       limit: { type: "string" },
+      since: { type: "string" },
       days: { type: "string" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },

@@ -99,6 +99,11 @@ jobs:
     needs: sign-windows
     runs-on: ubuntu-22.04
     steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.tag }}
+        fetch-depth: 0
+
     - uses: actions/download-artifact@v4
       with:
         name: cli-binaries
@@ -119,8 +124,18 @@ jobs:
         TAG: ${{ inputs.tag }}
         GH_REPO: ${{ github.repository }}
       run: |
+        prev=$(git tag --list 'v*' --sort=-version:refname | awk -v t="$TAG" 'found {print; exit} $0 == t {found=1}')
+        {
+          if [ -n "$prev" ]; then
+            git log --no-merges --pretty=format:"- %s" "$prev..$TAG"
+            printf '\n\nnpm: `@todoforai/cli@%s`\n\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' "${TAG#v}" "$GH_REPO" "$prev" "$TAG"
+          else
+            git log --no-merges -n 20 --pretty=format:"- %s" "$TAG"
+            printf '\n\nnpm: `@todoforai/cli@%s`\n' "${TAG#v}"
+          fi
+        } > notes.md
         if gh release view "$TAG" >/dev/null 2>&1; then
           gh release upload "$TAG" release/* --clobber
         else
-          gh release create "$TAG" release/* --title "todoforai-cli $TAG" --notes "npm: @todoforai/cli@${TAG#v}" --latest
+          gh release create "$TAG" release/* --title "todoforai-cli $TAG" --notes-file notes.md --latest
         fi

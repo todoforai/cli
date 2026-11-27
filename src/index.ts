@@ -46,6 +46,7 @@ import { memoryCommand, printMemoryHelp } from "./memory-command";
 import { notesCommand, printNotesHelp } from "./notes-command";
 import { printWorkflowHelp, workflowCommand } from "./workflow-command";
 import { widgetsCommand, printWidgetsHelp } from "./widgets-command";
+import { changelogCommand, printChangelogHelp, printChangesSince } from "./changelog-command";
 import { parseSchedule, startNow } from "./manage-command";
 import { createHash, randomUUID } from "crypto";
 import { ensureBridgeRunning } from "./ensure-bridge";
@@ -200,8 +201,15 @@ async function main() {
 
   if (args.version) { console.log(VERSION); process.exit(0); }
   if (positionals[0] === "update") {
+    const prev = ownPkg?.version;
     const r = ownPkg ? await selfUpdate(ownPkg) : "unsupported";
+    if (r === "updated" && prev) await printChangesSince(prev);
     process.exit(r === "updated" || r === "current" ? 0 : 1);
+  }
+  if (positionals[0] === "changelog") {
+    if (args.help) { printChangelogHelp(); process.exit(0); }
+    await changelogCommand(positionals, args);
+    process.exit(0);
   }
   if (positionals[0] === "status" && args.help) { printStatusHelp(); process.exit(0); }
   if ((positionals[0] === "show" || positionals[0] === "open") && args.help) { printShowHelp(); process.exit(0); }
