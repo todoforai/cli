@@ -1,62 +1,16 @@
-/** Find a board item (note, widget) by id or loose title: case, accents, a substring, a dictation typo. */
+/** tfa-cli's side of @shared/fbe/shellCli/titleMatch: the same matching, a miss prints red and exits 2. */
 
+import { CliExit } from "@shared/fbe/shellCli/core";
+import * as m from "@shared/fbe/shellCli/titleMatch";
 import { RED, RESET } from "./colors";
 
 export const fail = (msg: string): never => { process.stderr.write(`${RED}${msg}${RESET}\n`); process.exit(2); };
 
-const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const exiting = <A extends unknown[], R>(f: (...a: A) => R) => (...a: A): R => {
+  try { return f(...a); } catch (e) { if (e instanceof CliExit) fail(e.message.replace(/^Error: /, "")); throw e; }
+};
 
-/** Edit distance where swapping two neighbouring letters is one typo ("tezst" ≈ "teszt"). */
-function distance(a: string, b: string) {
-  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i ? (j ? 0 : i) : j)));
-  for (let i = 1; i <= a.length; i++)
-    for (let j = 1; j <= b.length; j++) {
-      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-    }
-  return d[a.length][b.length];
-}
-
-/** Lower is better; undefined = no match. Exact id/title, then substring, then typo distance (≤ 1/3 of the length). */
-export function matchScore(id: string, title: string, query: string): number | undefined {
-  if (id === query) return 0;
-  const t = norm(title), q = norm(query);
-  if (!t || !q) return undefined;
-  if (t === q) return 0;
-  if (t.includes(q) || t.replace(/ /g, "").includes(q.replace(/ /g, ""))) return 1; // "ycomb" ⊂ "y-combinator"
-  // Within a typo per 3 chars: the whole title ("vibe hack" ≈ "vide hack"), or every query word ≈ a title word ("live widgte" ≈ "Live widget teszt").
-  const near = (a: string, b: string) => { const d = distance(a, b); return d <= Math.max(a.length, b.length) / 3 ? d : Infinity; };
-  const words = t.split(" ");
-  const d = Math.min(near(t, q), q.split(" ").reduce((sum, w) => sum + Math.min(...words.map((c) => near(c, w))), 0));
-  return d === Infinity ? undefined : 1 + d;
-}
-
-/** The items `query` matches, best first; none fails listing every item, so an empty search never looks like an empty board. */
-export function searchByTitle<T extends { id: string }>(items: T[], query: string, titleOf: (x: T) => string, what: string): T[] {
-  const hits = items.map((x) => ({ x, s: matchScore(x.id, titleOf(x), query) })).filter((r) => r.s !== undefined).sort((a, b) => a.s! - b.s!).map((r) => r.x);
-  if (!hits.length) fail(`No ${what} matches "${query}". ${what[0].toUpperCase() + what.slice(1)}s:\n${items.map((x) => `  ${x.id}  ${titleOf(x)}`).join("\n") || "  (none)"}`);
-  return hits;
-}
-
-/** The one item `query` names (id or loose title); fails listing the candidates. exact = id or exact title only. */
-export function findByTitle<T extends { id: string }>(items: T[], query: string, titleOf: (x: T) => string, exact = false, what = "note"): T {
-  const ranked = items.map((n) => ({ n, s: matchScore(n.id, titleOf(n), query) })).filter((x) => x.s === 0 || (!exact && x.s !== undefined)).sort((a, b) => a.s! - b.s!);
-  const list = (xs: T[]) => xs.map((n) => `  ${n.id}  ${titleOf(n)}`).join("\n");
-  if (!ranked.length) return fail(`No ${what} ${exact ? "has the id or title" : "matches"} "${query}". ${what[0].toUpperCase() + what.slice(1)}s:\n${list(items)}`);
-  const best = ranked.filter((x) => x.s === ranked[0].s);
-  if (best.length > 1) return fail(`${best.length} ${what}s match "${query}": use the id\n${list(best.map((x) => x.n))}`);
-  return ranked[0].n;
-}
-
-/** The one item `query` names exactly: its id first, else its title as written (case aside). Nothing is
- *  guessed: none fails with what it may have meant, more than one fails listing their ids. */
-export function findExact<T extends { id: string }>(items: T[], query: string, titleOf: (x: T) => string, what: string): T {
-  const q = query.trim().toLowerCase();
-  const byId = items.filter((x) => x.id === query.trim());
-  const hits = byId.length ? byId : items.filter((x) => titleOf(x).trim().toLowerCase() === q);
-  const list = (xs: T[]) => xs.map((x) => `  ${x.id}  ${titleOf(x)}`).join("\n");
-  if (hits.length === 1) return hits[0];
-  if (hits.length > 1) return fail(`${hits.length} ${what}s are named "${query}": use the id\n${list(hits)}`);
-  const near = items.map((x) => ({ x, s: matchScore(x.id, titleOf(x), query) })).filter((r) => r.s !== undefined).sort((a, b) => a.s! - b.s!).slice(0, 3).map((r) => r.x);
-  return fail(`No ${what} "${query}".${near.length ? ` Did you mean:\n${list(near)}` : ` ${what[0].toUpperCase() + what.slice(1)}s:\n${list(items)}`}`);
-}
+export const matchScore = m.matchScore;
+export const searchByTitle = exiting(m.searchByTitle) as typeof m.searchByTitle;
+export const findByTitle = exiting(m.findByTitle) as typeof m.findByTitle;
+export const findExact = exiting(m.findExact) as typeof m.findExact;

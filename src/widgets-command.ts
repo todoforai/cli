@@ -1,100 +1,35 @@
-// Deprecated legacy alias of `tfa-show widgets` (out of --help; kept for backward compatibility).
-/** `widgets` — the project's board widgets: cards showing a ref (a show `<todoId>:<alias>`, a todo, a url), addressed by title. */
+// Deprecated legacy alias: `tfa-cli widgets …` runs `tfa-show widgets …` (the shared command) in-process. Out of --help.
 
-import { readFileSync } from "fs";
-import { basename } from "path";
+import { readFileSync, statSync } from "fs";
+import { basename, resolve } from "path";
 import type { ApiClient } from "@shared/api";
-import { isTodoRef, parseRef, surfaceIdFor } from "@shared/fbe/refs";
-import { DIM, GREEN, RESET } from "./colors";
+import { restBasePath } from "@shared/api";
+import { runShellCli } from "@shared/fbe/shellCli";
+import { showCli } from "@shared/fbe/shellCli/show";
+import type { CliHttpReply, CliIo } from "@shared/fbe/shellCli/core";
 import { getEnv } from "./args";
-import { fail, findByTitle, searchByTitle } from "./title-match";
-
-const hostOf = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };
-
-/** `<todoId>:<key>` → the show it names; anything else (todo id, url) isn't a show. */
-export const showRefOf = (ref: string) => {
-  const r = parseRef(ref);
-  return r?.kind === "show" ? { todoId: r.todoId, key: r.key } : undefined;
-};
-
-export { surfaceIdFor };
-
-/** The name the board shows: a rename on the card, else the show's title, file, url host, else the ref. */
-export function widgetTitle(w: any): string {
-  const show = w.show ?? {};
-  const renamed = w.title && w.title !== show.title && w.title !== show.filename;
-  return (renamed && w.title) || show.title || (show.filename && basename(show.filename)) || (show.url && hostOf(show.url)) || w.title || w.todoTitle || (/^https?:\/\//i.test(w.ref) ? hostOf(w.ref) : w.ref);
-}
-
-const kindOf = (w: any) => {
-  if (/^https?:\/\//i.test(w.ref)) return "url";
-  if (!showRefOf(w.ref)) return "todo";
-  const s = w.show ?? {};
-  return s.cardRef ? `renderer=${s.cardRef}` : s.url ? `url ${hostOf(s.url)}` : s.mime || "show";
-};
 
 export async function widgetsCommand(api: ApiClient, positionals: string[], args: Record<string, any>, projectId?: string) {
-  if (!projectId) fail("No project — pass --project <id> or set TODOFORAI_PROJECT_ID");
-  const [, verb, target, ...rest] = positionals;
-  const widgets = (await api.listProjectSurfaces(projectId!)).filter((s: any) => s.ref);
-  // A todo widget is named by its todo's title on the board: fetch those (few) so it is findable by name.
-  await Promise.all(widgets.filter((w: any) => isTodoRef(w.ref)).map(async (w: any) => { w.todoTitle = (await api.getTodo(w.ref).catch(() => null))?.content?.split("\n")[0]?.slice(0, 80); }));
-  const find = (q: string, exact = false) => findByTitle(widgets, q, widgetTitle, exact, "widget");
-
-  if (!verb || !["get", "set", "add", "rename", "rm"].includes(verb)) {
-    const query = positionals.slice(verb === "list" ? 2 : 1).join(" ");
-    const shown = query ? searchByTitle(widgets, query, widgetTitle, "widget") : widgets;
-    if (args.json) { console.log(JSON.stringify(shown, null, 2)); return; }
-    for (const w of shown) console.log(`${w.id}  ${widgetTitle(w)}  ${DIM}${[kindOf(w), w.ref, w.group && `in ${w.group}`].filter(Boolean).join("  ")}${RESET}`);
-    return;
-  }
-  if (!target) fail(`Usage: tfa-cli widgets ${verb} <${verb === "add" ? "ref|alias" : "widget"}>${verb === "set" ? " <file|->" : verb === "rename" ? ' -- "title"' : ""}`);
-
-  if (verb === "add") {
-    const here = getEnv("TODO_ID");
-    const ref = isTodoRef(target) || /^https?:\/\//i.test(target) || showRefOf(target) ? target : here ? `${here}:${target}` : fail("A bare alias needs a current todo: pass <todoId>:<alias>");
-    if (showRefOf(ref)) { const { todoId, key } = showRefOf(ref)!; await api.getShowBlock(todoId, key); } // fail now on a wrong ref, not as a broken card
-    const group = args.group as string | undefined;
-    const same = widgets.find((w: any) => w.ref === ref && (w.group ?? undefined) === group);
-    const id = same?.id ?? surfaceIdFor(ref, group);
-    const w = await api.upsertProjectSurface(projectId!, id, { ref, ...(args.title ? { title: args.title } : {}), ...(group ? { group } : {}) });
-    if (args.json) { console.log(JSON.stringify(w, null, 2)); return; }
-    process.stderr.write(`${GREEN}✅ widget ${id} ${same ? "updated" : "added"}: ${ref}${group ? ` in ${group}` : ""}${RESET}\n`);
-    return;
-  }
-
-  const w = verb === "rm" || verb === "get" ? find([target, ...rest].join(" "), verb === "rm") : find(target);
-  if (verb === "rm") {
-    await api.deleteProjectSurface(projectId!, w.id);
-    process.stderr.write(`${GREEN}✅ widget "${widgetTitle(w)}" taken off the board (its show stays)${RESET}\n`);
-    return;
-  }
-  if (verb === "rename") {
-    await api.upsertProjectSurface(projectId!, w.id, { title: rest.join(" ") });
-    process.stderr.write(`${GREEN}✅ widget ${w.id} ${rest.join(" ").trim() ? `renamed "${rest.join(" ")}"` : "follows its show's title"}${RESET}\n`);
-    return;
-  }
-
-  const show = showRefOf(w.ref);
-  if (!show) {
-    if (verb === "set") fail(`"${widgetTitle(w)}" shows ${w.ref}, not a file: edit that todo/page itself`);
-    console.log(args.json ? JSON.stringify(w, null, 2) : w.ref);
-    return;
-  }
-  const { block } = await api.getShowBlock(show.todoId, show.key);
-  if (verb === "get") {
-    if (args.json) { console.log(JSON.stringify({ widget: w, show: { ...block, results: undefined } }, null, 2)); return; }
-    if (block.url || block.ref) { console.log(block.url || block.ref); return; }
-    process.stdout.write(await api.showContent(show.todoId, block.alias || block.id));
-    return;
-  }
-  // set: new bytes for the same block; the backend keeps everything else (renderer, filename, mime, device, link).
-  const src = rest[0] ?? fail("Usage: tfa-cli widgets set <widget> <file|->");
-  const chunks: Buffer[] = [];
-  if (src === "-") for await (const c of process.stdin) chunks.push(c as Buffer);
-  const bytes = src === "-" ? Buffer.concat(chunks) : readFileSync(src);
-  if (!bytes.length) fail("Empty content");
-  const res = await api.replaceShowContent(show.todoId, block.alias || block.id, bytes);
-  if (args.json) { console.log(JSON.stringify(res, null, 2)); return; }
-  process.stderr.write(`${GREEN}✅ widget "${widgetTitle(w)}" updated (new version of ${res.ref})${RESET}\n`);
+  const send = async (path: string, init: RequestInit): Promise<CliHttpReply> => {
+    const res = await fetch(`${api.apiUrl}${restBasePath(api.apiKey)}${path}`, { ...init, headers: { ...init.headers, "x-api-key": api.apiKey } });
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { status: res.status, text: new TextDecoder().decode(bytes), bytes };
+  };
+  const io: CliIo = {
+    http: (method, path, json) => send(path, json === undefined ? { method } : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) }),
+    upload: (path, fields, file, method = "POST") => {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(fields)) form.append(k, v);
+      if (file) form.append("file", new Blob([file.bytes as Uint8Array<ArrayBuffer>], { type: file.type }), file.name);
+      return send(path, { method, body: form });
+    },
+    stdin: async () => process.stdin.isTTY ? null : readFileSync(0),
+    file: async (p) => { const abs = resolve(p); try { return statSync(abs).isFile() ? { name: basename(abs), bytes: readFileSync(abs) } : null; } catch { return null; } },
+    env: { todoId: getEnv("TODO_ID"), projectId, cwd: process.cwd(), stdoutTty: !!process.stdout.isTTY },
+  };
+  const flags = [args.json && "--json", args.title !== undefined && ["--title", String(args.title)], args.group && ["--group", String(args.group)]].filter(Boolean).flat() as string[];
+  const r = await runShellCli(showCli, ["widgets", ...flags, "--", ...positionals.slice(1)], io);
+  process.stdout.write(r.stdout);
+  process.stderr.write(r.stderr);
+  process.exitCode = r.code;
 }
