@@ -40,6 +40,7 @@ import { machineCommand, printMachineHelp } from "./machine-command";
 import { todoCommand, projectCommand, brandCommand, deviceCommand, printTodoHelp, printProjectHelp, printBrandHelp, printDeviceHelp, voiceDeviceCommand } from "./manage-command";
 import { listTodosCommand, printListTodosHelp } from "./list-todos";
 import { inboxCommand, notifyCommand, printInboxHelp, printNotifyHelp } from "./notify-command";
+import { auditExportCommand, printAuditHelp, printAuditSchema } from "./audit-command";
 import { connectionsCommand, printConnectionsHelp } from "./connections-command";
 import { importCommand, printImportHelp } from "./import-command";
 import { memoryCommand, printMemoryHelp } from "./memory-command";
@@ -220,6 +221,7 @@ async function main() {
   if (positionals[0] === "device" && args.help) { printDeviceHelp(); process.exit(0); }
   if (positionals[0] === "machine" && args.help) { printMachineHelp(); process.exit(0); }
   if (positionals[0] === "inbox" && args.help) { printInboxHelp(); process.exit(0); }
+  if (positionals[0] === "audit" && positionals[1] !== "export") { if (positionals[1] === "schema") printAuditSchema(); else printAuditHelp(); process.exit(0); }
   if (positionals[0] === "connections" && args.help) { printConnectionsHelp(); process.exit(0); }
   if (positionals[0] === "notify" && args.help) { printNotifyHelp(); process.exit(0); }
   if (positionals[0] === "import" && args.help) { printImportHelp(); process.exit(0); }
@@ -400,6 +402,7 @@ async function main() {
   if (positionals[0] === "device") { await deviceCommand(api, positionals, args); return; }
   if (positionals[0] === "machine") { await machineCommand(api, positionals, args); return; }
   if (positionals[0] === "inbox") { await inboxCommand(api, positionals, args); return; }
+  if (positionals[0] === "audit") { if (args.todo) args.todo = await rid(args.todo); await auditExportCommand(api, args, scopedProject); return; }
   if (positionals[0] === "connections") { await connectionsCommand(api, args); return; }
   if (positionals[0] === "notify") { await notifyCommand(api, positionals, args, scopedProject); return; }
   // Deprecated legacy alias of `tfa-show widgets` (out of --help; kept for backward compatibility).

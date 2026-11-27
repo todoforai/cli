@@ -66,6 +66,16 @@ tfa-cli -c                     # continue most recent todo
 tfa-cli --resume <todo-id>     # resume specific todo
 ```
 
+### Audit log
+
+```bash
+tfa-cli audit export --since 2026-11-01 -o nov.jsonl     # the project's audit log, raw JSONL
+tfa-cli audit export --todo <id> --type tool             # filters: --since --until --todo --user --agent --type
+tfa-cli audit schema                                     # what each line holds (hand it to any AI with the file)
+```
+
+Every tool call, approval, saved permission rule, workflow/access change and machine run, one JSON event per line, oldest first. You get what your rights show now: your own actions and the todos you can see; project managers get the whole team except other people's private todos. Each export is itself logged.
+
 ### Notifications
 
 ```bash

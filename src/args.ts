@@ -46,6 +46,7 @@ Examples:
   tfa-cli addmessage <todo-id> "text"  # Send a message and exit (like -r, no watch/bridge)
   tfa-cli start-now <todo-id>           # Start a draft / scheduled todo now
   tfa-cli recommend --template <id> | --title "…" [--note "why"]  # ✧ proposal card
+  tfa-cli audit export [--since …] [--todo <id>] [-o f.jsonl]  # The project's audit log, raw JSONL (audit schema: fields)
   tfa-cli inbox [needs-you|messages|activity] [--unread]  # Read the notification feed (the bell)
   tfa-cli inbox seen [tab]              # Mark notifications read
   tfa-cli notify [--to <email>] "Title" "message" [--href /t/<id>] [--url <link>]  # Note to your own user, or --to a project member (Messages tab + phone push)
@@ -165,7 +166,7 @@ const WORD_FLAGS: Record<string, string> = {
   config: "show-config",
 };
 // Subcommands that print their own help; anywhere else a second positional is data.
-const HELP_SUBCOMMANDS = ["agent", "todo", "project", "brand", "device", "connections", "machine", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "workflow", "changelog"];
+const HELP_SUBCOMMANDS = ["audit", "agent", "todo", "project", "brand", "device", "connections", "machine", "list", "ls", "status", "show", "open", "inbox", "notify", "import", "notes", "workflow", "changelog"];
 
 export function parseCliArgs() {
   const { values, positionals } = parseArgs({
@@ -217,6 +218,11 @@ export function parseCliArgs() {
       unread: { type: "boolean", default: false },
       limit: { type: "string" },
       since: { type: "string" },
+      until: { type: "string" },
+      todo: { type: "string" },
+      user: { type: "string" },
+      type: { type: "string" },
+      output: { type: "string", short: "o" },
       days: { type: "string" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
