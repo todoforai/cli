@@ -1,3 +1,4 @@
+// Deprecated legacy alias of `tfa-show widgets` (out of --help; kept for backward compatibility).
 /** `widgets` — the project's board widgets: cards showing a ref (a show `<todoId>:<alias>`, a todo, a url), addressed by title. */
 
 import { readFileSync } from "fs";
@@ -7,34 +8,6 @@ import { isTodoRef, parseRef, surfaceIdFor } from "@shared/fbe/refs";
 import { DIM, GREEN, RESET } from "./colors";
 import { getEnv } from "./args";
 import { fail, findByTitle, searchByTitle } from "./title-match";
-
-export function printWidgetsHelp() {
-  process.stderr.write(`
-tfa-cli widgets — the project's board widgets (cards on the board that show something live)
-
-A widget shows a ref: a show block <todoId>:<alias> (a file/html/chart/renderer card, always its
-latest version), a todo, or an http(s) url. "Widget" / "kártya" from the user means these.
-<widget> is a card id or its title, matched loosely like notes (case, accents, a typo).
-
-Usage:
-  tfa-cli widgets [query]                   List: id, title, what it shows, group
-  tfa-cli widgets get <widget> [> file]     A show widget: its current file's bytes to stdout
-                                            (--json: card + show metadata). todo/url: the ref
-  tfa-cli widgets set <widget> <file|->     New bytes for the show behind it: the card updates in place
-                                            (filename, type, renderer, link kept; - = stdin). File shows only
-  tfa-cli widgets add <ref|alias> [--title T] [--group <slug>]
-                                            Put a show (alias = in this todo), todo or url on the board
-  tfa-cli widgets rename <widget> -- "title"   Rename the card ("" = follow the show's title)
-  tfa-cli widgets rm <widget>               Take it off the board (id or exact title; the show stays)
-
-A renderer widget (show list says renderer=<name>): the show file is its data (often JSON), the
-renderer is its HTML template, shared by every widget using it: tfa-surface renderer get|add <name>.
-
-Examples:
-  tfa-cli widgets get "sajtó" > data.json && jq … data.json > new.json && tfa-cli widgets set "sajtó" new.json
-  tfa-show chart.png --alias kpi && tfa-cli widgets add kpi --title "Weekly KPIs" --group marketing
-`);
-}
 
 const hostOf = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };
 

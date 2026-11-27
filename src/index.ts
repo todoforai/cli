@@ -45,7 +45,7 @@ import { importCommand, printImportHelp } from "./import-command";
 import { memoryCommand, printMemoryHelp } from "./memory-command";
 import { notesCommand, printNotesHelp } from "./notes-command";
 import { printWorkflowHelp, workflowCommand } from "./workflow-command";
-import { widgetsCommand, printWidgetsHelp } from "./widgets-command";
+import { widgetsCommand } from "./widgets-command";
 import { changelogCommand, printChangelogHelp, printChangesSince } from "./changelog-command";
 import { parseSchedule, startNow } from "./manage-command";
 import { createHash, randomUUID } from "crypto";
@@ -225,13 +225,12 @@ async function main() {
   if (positionals[0] === "import" && args.help) { printImportHelp(); process.exit(0); }
   if (positionals[0] === "memory" && args.help) { printMemoryHelp(); process.exit(0); }
   if (positionals[0] === "notes" && args.help) { printNotesHelp(); process.exit(0); }
-  if (positionals[0] === "widgets" && args.help) { printWidgetsHelp(); process.exit(0); }
   if (positionals[0] === "workflow" && args.help) { printWorkflowHelp(); process.exit(0); }
   // `import --dry-run` only reads local session files: no backend, no login prompt.
   if (positionals[0] === "import" && args["dry-run"]) { await importCommand(null, positionals, args); return; }
   if ((positionals[0] === "list" || positionals[0] === "ls") && args.help) { printListTodosHelp(); process.exit(0); }
   // Subcommands with their own --help handle it themselves.
-  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device", "connections", "inbox", "notify", "import", "memory", "notes", "widgets", "workflow"].includes(positionals[0])) { printUsage(); process.exit(0); }
+  if (args.help && !["list", "ls", "agent", "todo", "project", "brand", "device", "connections", "inbox", "notify", "import", "memory", "notes", "workflow"].includes(positionals[0])) { printUsage(); process.exit(0); }
 
   // ── flag compatibility — validated ONCE here, so no later branch can
   // silently ignore a flag (e.g. --template returning before an --isolated
@@ -403,6 +402,7 @@ async function main() {
   if (positionals[0] === "inbox") { await inboxCommand(api, positionals, args); return; }
   if (positionals[0] === "connections") { await connectionsCommand(api, args); return; }
   if (positionals[0] === "notify") { await notifyCommand(api, positionals, args, scopedProject); return; }
+  // Deprecated legacy alias of `tfa-show widgets` (out of --help; kept for backward compatibility).
   if (positionals[0] === "widgets") { await widgetsCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "notes") { await notesCommand(api, positionals, args, scopedProject); return; }
   if (positionals[0] === "workflow") { await workflowCommand(api, positionals, args, scopedProject); return; }
