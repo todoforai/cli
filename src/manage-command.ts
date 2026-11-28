@@ -96,6 +96,8 @@ Usage:
   tfa-cli project groups                           List todo groups
   tfa-cli project groups set <slug> <field=value>… Create/update a group: name description pinned archived order
                                                    sections="Urgent,To pay,Later" (its piles, in order; "" = none)
+                                                   members="a@x.com,t:sales,-b@x.com" (who sees it; "open" = the whole
+                                                   project). Without it a new group gets your chat's audience.
   tfa-cli project groups section <slug> <old> <new>
                                                    Rename a section; its todos keep it
   tfa-cli project groups intake <slug> [on|off|regenerate] [field=value]…
@@ -393,9 +395,21 @@ export async function projectCommand(api: ApiClient, positionals: string[], args
       const updates = parseAssignments(fields);
       // "A,B,C" (or a JSON array): the sections, in order.
       if ("sections" in updates && !Array.isArray(updates.sections)) updates.sections = String(updates.sections).split(",").map((s) => s.trim()).filter(Boolean);
+      const members: { id: string; email?: string }[] = await api.getProjectMembers(projectId);
+      if ("members" in updates) {
+        const list = String(updates.members).trim();
+        delete updates.members;
+        // An empty value (an unset shell variable) must not open the group: "open" says so.
+        if (!list.replace(/,/g, "").trim()) fail(`members= is empty — list who sees ${slug}, or members=open for the whole project`);
+        // Emails → member ids (`-` keeps an exclusion); ids and `t:<tag>` pass through.
+        const idOf = (s: string) => s.includes("@") ? members.find(m => m.email?.toLowerCase() === s.toLowerCase())?.id ?? fail(`No project member with email ${s} (tfa-cli project members)`) : s;
+        updates.memberIds = list === "open" ? [] : list.split(",").map((s) => s.trim()).filter(Boolean).map((s) => s.startsWith("-") ? `-${idOf(s.slice(1))}` : idOf(s));
+      }
       const group = await api.upsertProjectGroup(projectId, slug, updates);
       if (args.json) { console.log(JSON.stringify(group, null, 2)); return; }
-      process.stderr.write(`${GREEN}✅ group ${slug} saved${RESET}\n`);
+      const emailOf = (s: string): string => s.startsWith("-") ? `-${emailOf(s.slice(1))}` : members.find(m => m.id === s)?.email ?? s;
+      const audience = group.subjects?.length ? `restricted: ${group.subjects.map(emailOf).join(", ")}` : "open to project";
+      process.stderr.write(`${GREEN}✅ group ${slug} saved (${audience})${RESET}\n`);
       return;
     }
     if (verb === "section") {

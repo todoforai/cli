@@ -31,6 +31,32 @@ test('project group intake routes on/off/read/regenerate without changing other 
   expect(api.regenerateProjectGroupIntake).toHaveBeenCalledWith('demo', 'audience');
 });
 
+test('project groups set: members= takes emails, tags and exclusions; the confirmation says who sees it', async () => {
+  const { projectCommand } = await import('./manage-command');
+  const { spyOn } = await import('bun:test');
+  let group: any = {};
+  const api = {
+    getProjectMembers: async () => [{ id: 'u1', email: 'a@x.com' }, { id: 'u2', email: 'b@x.com' }],
+    upsertProjectGroup: mock(async () => group),
+  };
+  const err = spyOn(process.stderr, 'write').mockImplementation(() => true);
+  try {
+    group = { slug: 'deals', subjects: ['u1', 't:sales', '-u2'] };
+    await projectCommand(api as any, ['project', 'groups', 'set', 'deals', 'members=A@x.com,t:sales,-b@x.com'], {}, 'p');
+    expect(api.upsertProjectGroup).toHaveBeenLastCalledWith('p', 'deals', { memberIds: ['u1', 't:sales', '-u2'] });
+    expect(String(err.mock.calls.at(-1)?.[0])).toContain('(restricted: a@x.com, t:sales, -b@x.com)');
+    group = { slug: 'deals' };
+    await projectCommand(api as any, ['project', 'groups', 'set', 'deals', 'members=open'], {}, 'p');
+    expect(api.upsertProjectGroup).toHaveBeenLastCalledWith('p', 'deals', { memberIds: [] });
+    expect(String(err.mock.calls.at(-1)?.[0])).toContain('(open to project)');
+    const exit = spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    try {
+      await expect(projectCommand(api as any, ['project', 'groups', 'set', 'deals', 'members=,'], {}, 'p')).rejects.toThrow('exit');
+    } finally { exit.mockRestore(); }
+    expect(api.upsertProjectGroup).toHaveBeenCalledTimes(2);
+  } finally { err.mockRestore(); }
+});
+
 test('voice defaults to mine, allows project and rejects the removed global scope', async () => {
   const { brandCommand } = await import('./manage-command');
   const listVoiceSources = mock(async () => ({ sources: [], profile: null }));
